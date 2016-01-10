@@ -1,5 +1,5 @@
 var EventEmitter = require('events').EventEmitter;
-var ndata = require('ndata');
+var scBroker = require('sc-broker');
 var async = require('async');
 var ClientCluster = require('./clientcluster').ClientCluster;
 var SCChannel = require('sc-channel').SCChannel;
@@ -318,7 +318,7 @@ var Server = module.exports.Server = function (options) {
     var launchServer = function (i) {
       var socketPath = options.brokers[i];
 
-      dataServer = ndata.createServer({
+      dataServer = scBroker.createServer({
         id: i,
         debug: startDebugPort ? startDebugPort + i : null,
         instanceId: options.instanceId,
@@ -348,7 +348,7 @@ var Server = module.exports.Server = function (options) {
       });
 
       dataServer.on('exit', function () {
-        self.emit('error', new Error('nData server at socket path ' + socketPath + ' exited'));
+        self.emit('error', new Error('scBroker server at socket path ' + socketPath + ' exited'));
         launchServer(i);
       });
 
@@ -402,7 +402,7 @@ var Client = module.exports.Client = function (options) {
   for (var i in options.brokers) {
     if (options.brokers.hasOwnProperty(i)) {
       var socketPath = options.brokers[i];
-      dataClient = ndata.createClient({
+      dataClient = scBroker.createClient({
         socketPath: socketPath,
         secretKey: options.secretKey
       });
