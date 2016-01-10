@@ -2,7 +2,6 @@ var EventEmitter = require('events').EventEmitter;
 var ndata = require('ndata');
 var async = require('async');
 var ClientCluster = require('./clientcluster').ClientCluster;
-var KeyManager = require('./keymanager').KeyManager;
 var SCChannel = require('sc-channel').SCChannel;
 var utils = require('./utils');
 var isEmpty = utils.isEmpty;
@@ -110,7 +109,6 @@ var Exchange = function (privateClientCluster, publicClientCluster, ioClusterCli
   this._privateClientCluster = privateClientCluster;
   this._publicClientCluster = publicClientCluster;
   this._ioClusterClient = ioClusterClient;
-  this._keyManager = new KeyManager();
   this._channelEmitter = new EventEmitter();
   this._channels = {};
 
@@ -305,7 +303,7 @@ Exchange.prototype.map = function () {
 };
 
 
-var IOCluster = module.exports.IOCluster = function (options) {
+var Server = module.exports.Server = function (options) {
   var self = this;
 
   var dataServer;
@@ -363,9 +361,9 @@ var IOCluster = module.exports.IOCluster = function (options) {
   }
 };
 
-IOCluster.prototype = Object.create(EventEmitter.prototype);
+Server.prototype = Object.create(EventEmitter.prototype);
 
-IOCluster.prototype.sendToBroker = function (brokerId, data) {
+Server.prototype.sendToBroker = function (brokerId, data) {
   var targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
     targetBroker.sendMasterMessage(data);
@@ -376,7 +374,7 @@ IOCluster.prototype.sendToBroker = function (brokerId, data) {
   }
 };
 
-IOCluster.prototype.destroy = function () {
+Server.prototype.destroy = function () {
   for (var i in this._dataServers) {
     if (this._dataServers.hasOwnProperty(i)) {
       this._dataServers[i].destroy();
@@ -385,7 +383,7 @@ IOCluster.prototype.destroy = function () {
 };
 
 
-var IOClusterClient = module.exports.IOClusterClient = function (options) {
+var Client = module.exports.Client = function (options) {
   var self = this;
 
   this._errorDomain = domain.createDomain();
@@ -396,7 +394,6 @@ var IOClusterClient = module.exports.IOClusterClient = function (options) {
   this._socketChannelLimit = options.socketChannelLimit;
   this.options = options;
 
-  this._keyManager = new KeyManager();
   this._ready = false;
 
   var dataClient;
@@ -519,13 +516,13 @@ var IOClusterClient = module.exports.IOClusterClient = function (options) {
   this._privateClientCluster.on('message', this._handleExchangeMessage.bind(this));
 };
 
-IOClusterClient.prototype = Object.create(EventEmitter.prototype);
+Client.prototype = Object.create(EventEmitter.prototype);
 
-IOClusterClient.prototype.destroy = function (callback) {
+Client.prototype.destroy = function (callback) {
   this._privateClientCluster.removeAll(callback);
 };
 
-IOClusterClient.prototype.on = function (event, listener) {
+Client.prototype.on = function (event, listener) {
   if (event == 'ready' && this._ready) {
     listener();
   } else {
@@ -533,7 +530,7 @@ IOClusterClient.prototype.on = function (event, listener) {
   }
 };
 
-IOClusterClient.prototype._validateSocket = function (socket, callback) {
+Client.prototype._validateSocket = function (socket, callback) {
   var self = this;
 
   if (socket.id == null) {
@@ -544,7 +541,7 @@ IOClusterClient.prototype._validateSocket = function (socket, callback) {
 };
 
 // Add pub/sub functions to socket object
-IOClusterClient.prototype._decorateSocket = function (socket) {
+Client.prototype._decorateSocket = function (socket) {
   var self = this;
 
   socket.channelSubscriptions = {};
@@ -580,7 +577,7 @@ IOClusterClient.prototype._decorateSocket = function (socket) {
   };
 };
 
-IOClusterClient.prototype.bind = function (socket, callback) {
+Client.prototype.bind = function (socket, callback) {
   var self = this;
 
   callback = this._errorDomain.bind(callback);
@@ -628,7 +625,7 @@ IOClusterClient.prototype.bind = function (socket, callback) {
   });
 };
 
-IOClusterClient.prototype.unbind = function (socket, callback) {
+Client.prototype.unbind = function (socket, callback) {
   var self = this;
 
   callback = this._errorDomain.bind(callback);
@@ -651,11 +648,11 @@ IOClusterClient.prototype.unbind = function (socket, callback) {
   });
 };
 
-IOClusterClient.prototype.exchange = function () {
+Client.prototype.exchange = function () {
   return this._exchangeClient;
 };
 
-IOClusterClient.prototype._dropUnusedSubscriptions = function (channel, callback) {
+Client.prototype._dropUnusedSubscriptions = function (channel, callback) {
   var self = this;
 
   if (isEmpty(this._clientSubscribers[channel])) {
@@ -668,11 +665,11 @@ IOClusterClient.prototype._dropUnusedSubscriptions = function (channel, callback
   callback && callback();
 };
 
-IOClusterClient.prototype.publish = function (channelName, data, callback) {
+Client.prototype.publish = function (channelName, data, callback) {
   this._privateClientCluster.publish(channelName, data, callback);
 };
 
-IOClusterClient.prototype.subscribe = function (channel, callback) {
+Client.prototype.subscribe = function (channel, callback) {
   var self = this;
 
   if (!this._exchangeSubscriptions[channel]) {
@@ -691,12 +688,12 @@ IOClusterClient.prototype.subscribe = function (channel, callback) {
   }
 };
 
-IOClusterClient.prototype.unsubscribe = function (channel, callback) {
+Client.prototype.unsubscribe = function (channel, callback) {
   delete this._exchangeSubscriptions[channel];
   this._dropUnusedSubscriptions(channel, callback);
 };
 
-IOClusterClient.prototype.unsubscribeAll = function (callback) {
+Client.prototype.unsubscribeAll = function (callback) {
   var self = this;
 
   var tasks = [];
@@ -713,14 +710,14 @@ IOClusterClient.prototype.unsubscribeAll = function (callback) {
   async.parallel(tasks, callback);
 };
 
-IOClusterClient.prototype.isSubscribed = function (channel, includePending) {
+Client.prototype.isSubscribed = function (channel, includePending) {
   if (includePending) {
     return !!this._exchangeSubscriptions[channel];
   }
   return this._exchangeSubscriptions[channel] === true;
 };
 
-IOClusterClient.prototype.subscribeClientSocket = function (socket, channels, callback) {
+Client.prototype.subscribeClientSocket = function (socket, channels, callback) {
   var self = this;
 
   if (channels instanceof Array) {
@@ -742,7 +739,7 @@ IOClusterClient.prototype.subscribeClientSocket = function (socket, channels, ca
   }
 };
 
-IOClusterClient.prototype.unsubscribeClientSocket = function (socket, channels, callback) {
+Client.prototype.unsubscribeClientSocket = function (socket, channels, callback) {
   var self = this;
 
   if (channels == null) {
@@ -771,7 +768,7 @@ IOClusterClient.prototype.unsubscribeClientSocket = function (socket, channels, 
   }
 };
 
-IOClusterClient.prototype._subscribeSingleClientSocket = function (socket, channel, callback) {
+Client.prototype._subscribeSingleClientSocket = function (socket, channel, callback) {
   var self = this;
 
   if (this._socketChannelLimit && socket.channelSubscriptionCount >= this._socketChannelLimit) {
@@ -810,7 +807,7 @@ IOClusterClient.prototype._subscribeSingleClientSocket = function (socket, chann
   }
 };
 
-IOClusterClient.prototype._unsubscribeSingleClientSocket = function (socket, channel, callback) {
+Client.prototype._unsubscribeSingleClientSocket = function (socket, channel, callback) {
   var self = this;
 
   if (this._clientSubscribers[channel]) {
@@ -829,7 +826,7 @@ IOClusterClient.prototype._unsubscribeSingleClientSocket = function (socket, cha
   });
 };
 
-IOClusterClient.prototype._handleExchangeMessage = function (channel, message, options) {
+Client.prototype._handleExchangeMessage = function (channel, message, options) {
   var packet = {
     channel: channel,
     data: message

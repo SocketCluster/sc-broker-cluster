@@ -1,4 +1,4 @@
-iocluster
+sc-broker-cluster
 =========
 
-Realtime clustering engine for SocketCluster
+Realtime clustered broker engine for SocketCluster

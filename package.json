@@ -1,13 +1,14 @@
 {
-  "name": "iocluster",
-  "version": "4.0.1",
+  "name": "sc-broker-cluster",
+  "version": "1.0.0",
   "description": "Realtime clustering engine",
   "keywords": [
-    "iocluster",
+    "broker",
     "cluster",
     "realtime",
     "socket",
-    "engine"
+    "engine",
+    "socketcluster"
   ],
   "author": {
     "name": "Jonathan Gros-Dubois"
@@ -19,7 +20,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/SocketCluster/iocluster.git"
+    "url": "git://github.com/SocketCluster/sc-broker-cluster.git"
   },
   "dependencies": {
     "async": "0.1.22",
