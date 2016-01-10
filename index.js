@@ -391,7 +391,6 @@ var Client = module.exports.Client = function (options) {
     self.emit('error', err);
   });
 
-  this._socketChannelLimit = options.socketChannelLimit;
   this.options = options;
 
   this._ready = false;
@@ -530,124 +529,6 @@ Client.prototype.on = function (event, listener) {
   }
 };
 
-Client.prototype._validateSocket = function (socket, callback) {
-  var self = this;
-
-  if (socket.id == null) {
-    callback && callback('Failed to validate - Socket did not have required id field');
-  } else {
-    callback && callback();
-  }
-};
-
-// Add pub/sub functions to socket object
-Client.prototype._decorateSocket = function (socket) {
-  var self = this;
-
-  socket.channelSubscriptions = {};
-  socket.channelSubscriptionCount = 0;
-
-  // Decorate the socket with a kickOut method to allow us to kick it out
-  // from a particular sub/sub channels at any time.
-  socket.kickOut = function (channel, message, callback) {
-    if (channel == null) {
-      for (var i in socket.channelSubscriptions) {
-        if (socket.channelSubscriptions.hasOwnProperty(i)) {
-          socket.emit('#kickOut', {message: message, channel: i});
-        }
-      }
-    } else {
-      socket.emit('#kickOut', {message: message, channel: channel});
-    }
-    self.unsubscribeClientSocket(socket, channel, callback);
-  };
-
-  socket.subscriptions = function () {
-    var subs = [];
-    for (var i in socket.channelSubscriptions) {
-      if (socket.channelSubscriptions.hasOwnProperty(i)) {
-        subs.push(i);
-      }
-    }
-    return subs;
-  };
-
-  socket.isSubscribed = function (channel) {
-    return !!socket.channelSubscriptions[channel];
-  };
-};
-
-Client.prototype.bind = function (socket, callback) {
-  var self = this;
-
-  callback = this._errorDomain.bind(callback);
-
-  this._decorateSocket(socket);
-
-  this._validateSocket(socket, function (err) {
-    if (err) {
-      callback(err, socket, true);
-    } else {
-      self._sockets[socket.id] = socket;
-
-      socket.on('#subscribe', function (channelOptions, res) {
-        if (!channelOptions) {
-          channelOptions = {};
-        }
-        self.subscribeClientSocket(socket, channelOptions.channel, function (err) {
-          if (err) {
-            res(err);
-            self.emit('warning', err);
-          } else {
-            res();
-          }
-        });
-      });
-
-      socket.on('#unsubscribe', function (channel, res) {
-        self.unsubscribeClientSocket(socket, channel, function (err, isWarning) {
-          if (err) {
-            res(err);
-
-            if (isWarning) {
-              self.emit('warning', err);
-            } else {
-              self.emit('error', err);
-            }
-          } else {
-            res();
-          }
-        });
-      });
-
-      callback(null, socket);
-    }
-  });
-};
-
-Client.prototype.unbind = function (socket, callback) {
-  var self = this;
-
-  callback = this._errorDomain.bind(callback);
-
-  async.waterfall([
-    function () {
-      var cb = arguments[arguments.length - 1];
-      socket.removeAllListeners('#subscribe');
-      socket.removeAllListeners('#unsubscribe');
-      self.unsubscribeClientSocket(socket, null, cb);
-    },
-    function () {
-      var cb = arguments[arguments.length - 1];
-      delete self._sockets[socket.id];
-      cb();
-    }
-  ],
-  function (err) {
-    callback(err, socket);
-  });
-};
-
 Client.prototype.exchange = function () {
   return this._exchangeClient;
 };
@@ -717,97 +598,23 @@ Client.prototype.isSubscribed = function (channel, includePending) {
   return this._exchangeSubscriptions[channel] === true;
 };
 
-Client.prototype.subscribeClientSocket = function (socket, channels, callback) {
+Client.prototype.subscribeSocket = function (socket, channel, callback) {
   var self = this;
 
-  if (channels instanceof Array) {
-    var tasks = [];
-    for (var i in channels) {
-      if (channels.hasOwnProperty(i)) {
-        (function (channel) {
-          tasks.push(function (cb) {
-            self._subscribeSingleClientSocket(socket, channel, cb);
-          });
-        })(channels[i]);
+  var addSubscription = function (err) {
+    if (!err) {
+      if (!self._clientSubscribers[channel]) {
+        self._clientSubscribers[channel] = {};
       }
+      self._clientSubscribers[channel][socket.id] = socket;
     }
-    async.waterfall(tasks, function (err) {
-      callback && callback(err);
-    });
-  } else {
-    this._subscribeSingleClientSocket(socket, channels, callback);
-  }
+    callback && callback(err);
+  };
+
+  this._privateClientCluster.subscribe(channel, addSubscription);
 };
 
-Client.prototype.unsubscribeClientSocket = function (socket, channels, callback) {
-  var self = this;
-
-  if (channels == null) {
-    channels = [];
-    for (var channel in socket.channelSubscriptions) {
-      if (socket.channelSubscriptions.hasOwnProperty(channel)) {
-        channels.push(channel);
-      }
-    }
-  }
-  if (channels instanceof Array) {
-    var tasks = [];
-    var len = channels.length;
-    for (var i = 0; i < len; i++) {
-      (function (channel) {
-        tasks.push(function (cb) {
-          self._unsubscribeSingleClientSocket(socket, channel, cb);
-        });
-      })(channels[i]);
-    }
-    async.waterfall(tasks, function (err) {
-      callback && callback(err);
-    });
-  } else {
-    this._unsubscribeSingleClientSocket(socket, channels, callback);
-  }
-};
-
-Client.prototype._subscribeSingleClientSocket = function (socket, channel, callback) {
-  var self = this;
-
-  if (this._socketChannelLimit && socket.channelSubscriptionCount >= this._socketChannelLimit) {
-    callback && callback('Socket ' + socket.id + ' tried to exceed the channel subscription limit of ' +
-      this._socketChannelLimit);
-  } else {
-    if (socket.channelSubscriptionCount == null) {
-      socket.channelSubscriptionCount = 0;
-    }
-
-    if (socket.channelSubscriptions == null) {
-      socket.channelSubscriptions = {};
-    }
-    if (socket.channelSubscriptions[channel] == null) {
-      socket.channelSubscriptions[channel] = true;
-      socket.channelSubscriptionCount++;
-    }
-
-    var addSubscription = function (err) {
-      if (err) {
-        delete socket.channelSubscriptions[channel];
-        socket.channelSubscriptionCount--;
-      } else {
-        if (!self._clientSubscribers[channel]) {
-          self._clientSubscribers[channel] = {};
-        }
-        self._clientSubscribers[channel][socket.id] = socket;
-      }
-      if (!err) {
-        socket.emit('subscribe', channel);
-      }
-      callback && callback(err);
-    };
-
-    this._privateClientCluster.subscribe(channel, addSubscription);
-  }
-};
-
-Client.prototype._unsubscribeSingleClientSocket = function (socket, channel, callback) {
+Client.prototype.unsubscribeSocket = function (socket, channel, callback) {
   var self = this;
 
   if (this._clientSubscribers[channel]) {
@@ -816,12 +623,7 @@ Client.prototype._unsubscribeSingleClientSocket = function (socket, channel, cal
       delete this._clientSubscribers[channel];
     }
   }
-  delete socket.channelSubscriptions[channel];
-  if (socket.channelSubscriptionCount != null) {
-    socket.channelSubscriptionCount--;
-  }
   this._dropUnusedSubscriptions(channel, function () {
-    socket.emit('unsubscribe', channel);
     callback && callback.apply(self, arguments);
   });
 };
