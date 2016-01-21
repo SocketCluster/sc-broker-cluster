@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "async": "0.1.22",
-    "sc-broker": "1.0.x",
+    "sc-broker": "2.1.x",
     "sc-channel": "1.0.x"
   },
   "main": "index",
