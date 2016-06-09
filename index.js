@@ -3,6 +3,7 @@ var scBroker = require('sc-broker');
 var async = require('async');
 var ClientCluster = require('./clientcluster').ClientCluster;
 var SCChannel = require('sc-channel').SCChannel;
+var SCSocket = require('socketcluster-server').SCSocket;
 var utils = require('./utils');
 var isEmpty = utils.isEmpty;
 var domain = require('domain');
@@ -634,11 +635,23 @@ Client.prototype._handleExchangeMessage = function (channel, message, options) {
     data: message
   };
 
+  // Optimization
+  var emitOptions = {};
+  try {
+    emitOptions.stringifiedData = SCSocket.prototype.stringify({
+      event: '#publish',
+      data: packet
+    });
+  } catch (err) {
+    this.emit('error', err);
+    return;
+  }
+
   var subscriberSockets = this._clientSubscribers[channel];
 
   for (var i in subscriberSockets) {
     if (subscriberSockets.hasOwnProperty(i)) {
-      subscriberSockets[i].emit('#publish', packet);
+      subscriberSockets[i].emit('#publish', packet, null, emitOptions);
     }
   }
 

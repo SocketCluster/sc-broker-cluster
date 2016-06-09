@@ -25,7 +25,8 @@
   "dependencies": {
     "async": "0.1.22",
     "sc-broker": "2.1.x",
-    "sc-channel": "1.0.x"
+    "sc-channel": "1.0.x",
+    "socketcluster-server": "4.x.x"
   },
   "main": "index",
   "engines": {
