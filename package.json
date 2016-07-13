@@ -23,7 +23,7 @@
     "url": "git://github.com/SocketCluster/sc-broker-cluster.git"
   },
   "dependencies": {
-    "async": "0.1.22",
+    "async": "2.0.0",
     "sc-broker": "2.1.x",
     "sc-channel": "1.0.x",
     "socketcluster-server": "4.x.x"
