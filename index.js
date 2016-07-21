@@ -349,7 +349,9 @@ var Server = module.exports.Server = function (options) {
       });
 
       dataServer.on('exit', function () {
-        self.emit('error', new Error('scBroker server at socket path ' + socketPath + ' exited'));
+        var err = new Error('scBroker server at socket path ' + socketPath + ' exited');
+        err.pid = process.pid;
+        self.emit('error', err);
         launchServer(i);
       });
 
