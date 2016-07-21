@@ -6,7 +6,7 @@ var SCChannel = require('sc-channel').SCChannel;
 var SCSocket = require('socketcluster-server').SCSocket;
 var utils = require('./utils');
 var isEmpty = utils.isEmpty;
-var domain = require('domain');
+var domain = require('sc-domain');
 
 
 var AbstractDataClient = function (dataClient) {
@@ -387,7 +387,7 @@ Server.prototype.destroy = function () {
 var Client = module.exports.Client = function (options) {
   var self = this;
 
-  this._errorDomain = domain.createDomain();
+  this._errorDomain = domain.create();
   this._errorDomain.on('error', function (err) {
     self.emit('error', err);
   });
