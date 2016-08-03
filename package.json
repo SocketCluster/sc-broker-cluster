@@ -27,7 +27,7 @@
     "sc-broker": "2.2.x",
     "sc-channel": "1.0.x",
     "sc-domain": "1.x.x",
-    "socketcluster-server": "4.x.x"
+    "socketcluster-server": "5.x.x"
   },
   "main": "index",
   "engines": {
