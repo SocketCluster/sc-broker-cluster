@@ -629,6 +629,10 @@ Client.prototype.unsubscribeSocket = function (socket, channel, callback) {
   });
 };
 
+Client.prototype.setSCServer = function (scServer) {
+  this.scServer = scServer;
+};
+
 Client.prototype._handleExchangeMessage = function (channel, message, options) {
   var packet = {
     channel: channel,
@@ -637,13 +641,19 @@ Client.prototype._handleExchangeMessage = function (channel, message, options) {
 
   // Optimization
   var emitOptions = {};
-  try {
-    emitOptions.stringifiedData = SCSocket.prototype.encode({
-      event: '#publish',
-      data: packet
-    });
-  } catch (err) {
-    this.emit('error', err);
+  if (this.scServer) {
+    try {
+      emitOptions.stringifiedData = this.scServer.codec.encode({
+        event: '#publish',
+        data: packet
+      });
+    } catch (err) {
+      this.emit('error', err);
+      return;
+    }
+  } else {
+    var error = new Error('Cannot relay exchange messages before the scServer has been set');
+    this.emit('error', error);
     return;
   }
 
