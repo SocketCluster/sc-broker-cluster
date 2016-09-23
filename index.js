@@ -71,10 +71,6 @@ AbstractDataClient.prototype.hasKey = function () {
   this._dataClient.hasKey.apply(this._dataClient, arguments);
 };
 
-AbstractDataClient.prototype.stringify = function (value) {
-  return this._dataClient.stringify(value);
-};
-
 AbstractDataClient.prototype.extractKeys = function (object) {
   return this._dataClient.extractKeys(object);
 };
@@ -642,7 +638,7 @@ Client.prototype._handleExchangeMessage = function (channel, message, options) {
   // Optimization
   var emitOptions = {};
   try {
-    emitOptions.stringifiedData = SCSocket.prototype.stringify({
+    emitOptions.stringifiedData = SCSocket.prototype.encode({
       event: '#publish',
       data: packet
     });
