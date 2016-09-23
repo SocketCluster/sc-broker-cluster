@@ -639,9 +639,9 @@ Client.prototype._handleExchangeMessage = function (channel, message, options) {
     data: message
   };
 
-  // Optimization
   var emitOptions = {};
   if (this.scServer) {
+    // Optimization
     try {
       emitOptions.stringifiedData = this.scServer.codec.encode({
         event: '#publish',
@@ -651,10 +651,6 @@ Client.prototype._handleExchangeMessage = function (channel, message, options) {
       this.emit('error', err);
       return;
     }
-  } else {
-    var error = new Error('Cannot relay exchange messages before the scServer has been set');
-    this.emit('error', error);
-    return;
   }
 
   var subscriberSockets = this._clientSubscribers[channel];
