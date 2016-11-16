@@ -1,6 +1,6 @@
 {
   "name": "sc-broker-cluster",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "description": "Realtime clustering engine",
   "keywords": [
     "broker",
@@ -27,6 +27,7 @@
     "sc-broker": "2.2.x",
     "sc-channel": "1.0.x",
     "sc-domain": "1.x.x",
+    "sc-hasher": "1.x.x",
     "socketcluster-server": "5.x.x"
   },
   "main": "index",

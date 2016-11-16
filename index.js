@@ -7,6 +7,7 @@ var SCSocket = require('socketcluster-server').SCSocket;
 var utils = require('./utils');
 var isEmpty = utils.isEmpty;
 var domain = require('sc-domain');
+var hash = require('sc-hasher').hash;
 
 
 var AbstractDataClient = function (dataClient) {
@@ -411,31 +412,7 @@ var Client = module.exports.Client = function (options) {
   }
 
   var hasher = function (key) {
-    var ch;
-    var hash = 0;
-    if (typeof key == 'number') {
-      hash = key;
-    } else {
-      if (key instanceof Array) {
-        key = key[0];
-      }
-      if (typeof key != 'string') {
-        try {
-          key = JSON.stringify(key);
-        } catch (e) {
-          key = null;
-        }
-      }
-      if (key == null || key.length == 0) {
-        return hash;
-      }
-      for (var i = 0; i < key.length; i++) {
-        ch = key.charCodeAt(i);
-        hash = ((hash << 5) - hash) + ch;
-        hash = hash & hash;
-      }
-    }
-    return Math.abs(hash) % dataClients.length;
+    return hash(key, dataClients.length);
   };
 
   var channelMethods = {
