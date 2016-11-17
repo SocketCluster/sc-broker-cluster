@@ -76,10 +76,11 @@ var ClientCluster = function (clients) {
           var key = arguments[0];
           var lastArg = arguments[arguments.length - 1];
           var results = [];
-          var activeClients = self.map(key, method);
+          var mapOutput = self.detailedMap(key, method);
+          var activeClients = mapOutput.targets;
 
           if (lastArg instanceof Function) {
-            if (activeClients.length < 2) {
+            if (mapOutput.type == 'single') {
               activeClients[0][method].apply(activeClients[0], arguments);
             } else {
               var result;
@@ -128,8 +129,7 @@ var ClientCluster = function (clients) {
           var results = [];
           var expiryMap = {};
 
-          var lastArg = arguments[arguments.length - 1];
-          var cb = lastArg;
+          var cb = arguments[arguments.length - 1];
           var len = keys.length;
 
           for (var j = 0; j < len; j++) {
@@ -182,21 +182,32 @@ var ClientCluster = function (clients) {
     return mapper;
   };
 
-  this.map = function (key, method) {
+  this.detailedMap = function (key, method) {
     var result = mapper(key, method, clientIds);
+    var targets, type;
     if (typeof result == 'number') {
-      return [clients[result % clients.length]];
-    } else if (result instanceof Array) {
-      var dataClients = [];
-      for (var i in result) {
-        if (result.hasOwnProperty(i)) {
-          dataClients.push(clients[result[i] % clients.length]);
+      type = 'single';
+      targets = [clients[result % clients.length]];
+    } else {
+      type = 'multi';
+      if (result instanceof Array) {
+        var dataClients = [];
+        for (var i in result) {
+          if (result.hasOwnProperty(i)) {
+            dataClients.push(clients[result[i] % clients.length]);
+          }
         }
+        targets = dataClients;
+      } else {
+        targets = [];
       }
-      return dataClients;
     }
 
-    return [];
+    return {type: type, targets: targets};
+  };
+
+  this.map = function (key, method) {
+    return self.detailedMap(key, method).targets;
   };
 };
 
