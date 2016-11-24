@@ -405,7 +405,8 @@ var Client = module.exports.Client = function (options) {
       var socketPath = options.brokers[i];
       dataClient = scBroker.createClient({
         socketPath: socketPath,
-        secretKey: options.secretKey
+        secretKey: options.secretKey,
+        pubSubBatchDuration: options.pubSubBatchDuration
       });
       dataClients.push(dataClient);
     }
