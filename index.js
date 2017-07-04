@@ -3,11 +3,14 @@ var scBroker = require('sc-broker');
 var async = require('async');
 var ClientCluster = require('./clientcluster').ClientCluster;
 var SCChannel = require('sc-channel').SCChannel;
-var SCSocket = require('socketcluster-server').SCSocket;
 var utils = require('./utils');
 var isEmpty = utils.isEmpty;
 var domain = require('sc-domain');
 var hash = require('sc-hasher').hash;
+
+var scErrors = require('sc-errors');
+var BrokerError = scErrors.BrokerError;
+var ProcessExitError = scErrors.ProcessExitError;
 
 
 var AbstractDataClient = function (dataClient) {
@@ -348,7 +351,7 @@ var Server = module.exports.Server = function (options) {
       });
 
       dataServer.on('exit', function () {
-        var err = new Error('scBroker server at socket path ' + socketPath + ' exited');
+        var err = new ProcessExitError('scBroker server at socket path ' + socketPath + ' exited');
         err.pid = process.pid;
         self.emit('error', err);
         launchServer(i);
@@ -370,7 +373,7 @@ Server.prototype.sendToBroker = function (brokerId, data) {
   if (targetBroker) {
     targetBroker.sendMasterMessage(data);
   } else {
-    var err = new Error('Broker with id ' + brokerId + ' does not exist');
+    var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
     err.pid = process.pid;
     this.emit('error', err);
   }
