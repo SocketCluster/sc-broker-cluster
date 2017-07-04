@@ -316,6 +316,10 @@ var Server = module.exports.Server = function (options) {
   var startDebugPort = options.debug;
   var startInspectPort = options.inspect;
 
+  var triggerBrokerStart = function (brokerInfo) {
+    self.emit('brokerStart', brokerInfo);
+  };
+
   for (var i = 0; i < len; i++) {
     var launchServer = function (i) {
       var socketPath = options.brokers[i];
@@ -338,11 +342,24 @@ var Server = module.exports.Server = function (options) {
       self._dataServers[i] = dataServer;
 
       if (firstTime) {
-        dataServer.on('ready', function () {
+        dataServer.on('ready', function (brokerInfo) {
           if (++readyCount >= options.brokers.length) {
             firstTime = false;
             self.emit('ready');
           }
+          triggerBrokerStart({
+            id: brokerInfo.id,
+            pid: brokerInfo.pid,
+            respawn: false
+          });
+        });
+      } else {
+        dataServer.on('ready', function (brokerInfo) {
+          triggerBrokerStart({
+            id: brokerInfo.id,
+            pid: brokerInfo.pid,
+            respawn: true
+          });
         });
       }
 
@@ -350,10 +367,17 @@ var Server = module.exports.Server = function (options) {
         self.emit('error', err);
       });
 
-      dataServer.on('exit', function () {
+      dataServer.on('exit', function (brokerInfo) {
         var err = new ProcessExitError('scBroker server at socket path ' + socketPath + ' exited');
         err.pid = process.pid;
         self.emit('error', err);
+
+        self.emit('brokerExit', {
+          id: brokerInfo.id,
+          pid: brokerInfo.pid,
+          code: brokerInfo.code,
+          signal: brokerInfo.signal
+        });
         launchServer(i);
       });
 
