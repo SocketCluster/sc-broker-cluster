@@ -336,6 +336,7 @@ var Server = module.exports.Server = function (options) {
         brokerControllerPath: options.appBrokerControllerPath,
         initControllerPath: options.appInitControllerPath,
         processTermTimeout: options.processTermTimeout,
+        ipcAckTimeout: options.ipcAckTimeout,
         brokerOptions: options.brokerOptions
       });
 
@@ -381,8 +382,8 @@ var Server = module.exports.Server = function (options) {
         launchServer(i);
       });
 
-      dataServer.on('brokerMessage', function (brokerId, data) {
-        self.emit('brokerMessage', brokerId, data);
+      dataServer.on('brokerMessage', function (brokerId, data, callback) {
+        self.emit('brokerMessage', brokerId, data, callback);
       });
     };
 
@@ -392,14 +393,15 @@ var Server = module.exports.Server = function (options) {
 
 Server.prototype = Object.create(EventEmitter.prototype);
 
-Server.prototype.sendToBroker = function (brokerId, data) {
+Server.prototype.sendToBroker = function (brokerId, data, callback) {
   var targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
-    targetBroker.sendMasterMessage(data);
+    targetBroker.sendToBroker(data, callback);
   } else {
     var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
     err.pid = process.pid;
     this.emit('error', err);
+    callback && callback(err);
   }
 };
 
