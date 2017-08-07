@@ -369,7 +369,7 @@ var Server = module.exports.Server = function (options) {
       });
 
       dataServer.on('exit', function (brokerInfo) {
-        var err = new ProcessExitError('scBroker server at socket path ' + socketPath + ' exited');
+        var err = new ProcessExitError('Broker server at socket path ' + socketPath + ' exited');
         err.pid = process.pid;
         self.emit('error', err);
 
@@ -485,16 +485,22 @@ var Client = module.exports.Client = function (options) {
     return hasher(key);
   };
 
+  var emitWarning = function (warning) {
+    self.emit('warning', warning);
+  };
+
   // The user cannot change the _defaultMapper for _privateClientCluster.
   this._privateClientCluster = new ClientCluster(dataClients);
   this._privateClientCluster.setMapper(this._defaultMapper);
   this._errorDomain.add(this._privateClientCluster);
+  this._privateClientCluster.on('warning', emitWarning);
 
   // The user can provide a custom mapper for _publicClientCluster.
   // The _defaultMapper is used by default.
   this._publicClientCluster = new ClientCluster(dataClients);
   this._publicClientCluster.setMapper(this._defaultMapper);
   this._errorDomain.add(this._publicClientCluster);
+  this._publicClientCluster.on('warning', emitWarning);
 
   this._sockets = {};
 

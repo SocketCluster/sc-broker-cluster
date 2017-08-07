@@ -56,8 +56,12 @@ var ClientCluster = function (clients) {
 
   for (var i in clients) {
     if (clients.hasOwnProperty(i)) {
-      errorDomain.add(clients[i]);
-      clients[i].id = i;
+      var client = clients[i];
+      errorDomain.add(client);
+      client.on('warning', function (warning) {
+        self.emit('warning', warning);
+      });
+      client.id = i;
       clientIds.push(i);
     }
   }
