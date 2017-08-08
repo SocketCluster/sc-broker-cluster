@@ -1,5 +1,4 @@
 var async = require('async');
-var domain = require('sc-domain');
 var EventEmitter = require('events').EventEmitter;
 
 var ClientCluster = function (clients) {
@@ -49,15 +48,12 @@ var ClientCluster = function (clients) {
     'extractValues'
   ];
 
-  var errorDomain = domain.create();
-  errorDomain.on('error', function (err) {
-    self.emit('error', err);
-  });
-
   for (var i in clients) {
     if (clients.hasOwnProperty(i)) {
       var client = clients[i];
-      errorDomain.add(client);
+      client.on('error', function (error) {
+        self.emit('error', error);
+      });
       client.on('warning', function (warning) {
         self.emit('warning', warning);
       });

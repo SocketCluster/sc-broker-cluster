@@ -5,7 +5,6 @@ var ClientCluster = require('./clientcluster').ClientCluster;
 var SCChannel = require('sc-channel').SCChannel;
 var utils = require('./utils');
 var isEmpty = utils.isEmpty;
-var domain = require('sc-domain');
 var hash = require('sc-hasher').hash;
 
 var scErrors = require('sc-errors');
@@ -417,13 +416,7 @@ Server.prototype.destroy = function () {
 var Client = module.exports.Client = function (options) {
   var self = this;
 
-  this._errorDomain = domain.create();
-  this._errorDomain.on('error', function (err) {
-    self.emit('error', err);
-  });
-
   this.options = options;
-
   this._ready = false;
 
   var dataClient;
@@ -486,6 +479,9 @@ var Client = module.exports.Client = function (options) {
     return hasher(key);
   };
 
+  var emitError = function (error) {
+    self.emit('error', error);
+  };
   var emitWarning = function (warning) {
     self.emit('warning', warning);
   };
@@ -493,14 +489,14 @@ var Client = module.exports.Client = function (options) {
   // The user cannot change the _defaultMapper for _privateClientCluster.
   this._privateClientCluster = new ClientCluster(dataClients);
   this._privateClientCluster.setMapper(this._defaultMapper);
-  this._errorDomain.add(this._privateClientCluster);
+  this._privateClientCluster.on('error', emitError);
   this._privateClientCluster.on('warning', emitWarning);
 
   // The user can provide a custom mapper for _publicClientCluster.
   // The _defaultMapper is used by default.
   this._publicClientCluster = new ClientCluster(dataClients);
   this._publicClientCluster.setMapper(this._defaultMapper);
-  this._errorDomain.add(this._publicClientCluster);
+  this._publicClientCluster.on('error', emitError);
   this._publicClientCluster.on('warning', emitWarning);
 
   this._sockets = {};
