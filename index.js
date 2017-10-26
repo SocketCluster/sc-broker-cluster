@@ -333,7 +333,6 @@ var Server = module.exports.Server = function (options) {
         expiryAccuracy: options.expiryAccuracy,
         downgradeToUser: options.downgradeToUser,
         brokerControllerPath: options.appBrokerControllerPath,
-        initControllerPath: options.appInitControllerPath,
         processTermTimeout: options.processTermTimeout,
         ipcAckTimeout: options.ipcAckTimeout,
         brokerOptions: options.brokerOptions
