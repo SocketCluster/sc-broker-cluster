@@ -103,7 +103,7 @@ AbstractDataClient.prototype.exec = function () {
 };
 
 
-var Exchange = function (privateClientCluster, publicClientCluster, ioClusterClient) {
+var SCExchange = function (privateClientCluster, publicClientCluster, ioClusterClient) {
   AbstractDataClient.call(this, publicClientCluster);
 
   this._privateClientCluster = privateClientCluster;
@@ -117,20 +117,20 @@ var Exchange = function (privateClientCluster, publicClientCluster, ioClusterCli
   this._ioClusterClient.on('message', this._messageHander);
 };
 
-Exchange.prototype = Object.create(AbstractDataClient.prototype);
+SCExchange.prototype = Object.create(AbstractDataClient.prototype);
 
-Exchange.prototype.destroy = function () {
+SCExchange.prototype.destroy = function () {
   this._ioClusterClient.removeListener('message', this._messageHander);
 };
 
-Exchange.prototype._handleChannelMessage = function (message) {
+SCExchange.prototype._handleChannelMessage = function (message) {
   var channelName = message.channel;
   if (this.isSubscribed(channelName)) {
     this._channelEmitter.emit(channelName, message.data);
   }
 };
 
-Exchange.prototype._triggerChannelSubscribe = function (channel) {
+SCExchange.prototype._triggerChannelSubscribe = function (channel) {
   var channelName = channel.name;
 
   channel.state = channel.SUBSCRIBED;
@@ -139,7 +139,7 @@ Exchange.prototype._triggerChannelSubscribe = function (channel) {
   EventEmitter.prototype.emit.call(this, 'subscribe', channelName);
 };
 
-Exchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
+SCExchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
   var channelName = channel.name;
 
   channel.state = channel.UNSUBSCRIBED;
@@ -148,7 +148,7 @@ Exchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
   EventEmitter.prototype.emit.call(this, 'subscribeFail', err, channelName);
 };
 
-Exchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
+SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
   var channelName = channel.name;
   var oldState = channel.state;
 
@@ -163,7 +163,7 @@ Exchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
   }
 };
 
-Exchange.prototype.send = function (data, mapIndex, callback) {
+SCExchange.prototype.send = function (data, mapIndex, callback) {
   if (mapIndex == null) {
     // Send to all brokers in cluster if mapIndex is not provided
     mapIndex = '*';
@@ -182,11 +182,11 @@ Exchange.prototype.send = function (data, mapIndex, callback) {
   async.parallel(tasks, callback);
 };
 
-Exchange.prototype.publish = function (channelName, data, callback) {
+SCExchange.prototype.publish = function (channelName, data, callback) {
   this._ioClusterClient.publish(channelName, data, callback);
 };
 
-Exchange.prototype.subscribe = function (channelName) {
+SCExchange.prototype.subscribe = function (channelName) {
   var self = this;
 
   var channel = this._channels[channelName];
@@ -209,7 +209,7 @@ Exchange.prototype.subscribe = function (channelName) {
   return channel;
 };
 
-Exchange.prototype.unsubscribe = function (channelName) {
+SCExchange.prototype.unsubscribe = function (channelName) {
   var channel = this._channels[channelName];
 
   if (channel) {
@@ -226,7 +226,7 @@ Exchange.prototype.unsubscribe = function (channelName) {
   }
 };
 
-Exchange.prototype.channel = function (channelName) {
+SCExchange.prototype.channel = function (channelName) {
   var currentChannel = this._channels[channelName];
 
   if (!currentChannel) {
@@ -236,14 +236,14 @@ Exchange.prototype.channel = function (channelName) {
   return currentChannel;
 };
 
-Exchange.prototype.destroyChannel = function (channelName) {
+SCExchange.prototype.destroyChannel = function (channelName) {
   var channel = this._channels[channelName];
   channel.unwatch();
   channel.unsubscribe();
   delete this._channels[channelName];
 };
 
-Exchange.prototype.subscriptions = function (includePending) {
+SCExchange.prototype.subscriptions = function (includePending) {
   var subs = [];
   var channel, includeChannel;
   for (var channelName in this._channels) {
@@ -265,7 +265,7 @@ Exchange.prototype.subscriptions = function (includePending) {
   return subs;
 };
 
-Exchange.prototype.isSubscribed = function (channelName, includePending) {
+SCExchange.prototype.isSubscribed = function (channelName, includePending) {
   var channel = this._channels[channelName];
   if (includePending) {
     return !!channel && (channel.state == channel.SUBSCRIBED ||
@@ -274,11 +274,11 @@ Exchange.prototype.isSubscribed = function (channelName, includePending) {
   return !!channel && channel.state == channel.SUBSCRIBED;
 };
 
-Exchange.prototype.watch = function (channelName, handler) {
+SCExchange.prototype.watch = function (channelName, handler) {
   this._channelEmitter.on(channelName, handler);
 };
 
-Exchange.prototype.unwatch = function (channelName, handler) {
+SCExchange.prototype.unwatch = function (channelName, handler) {
   if (handler) {
     this._channelEmitter.removeListener(channelName, handler);
   } else {
@@ -286,19 +286,19 @@ Exchange.prototype.unwatch = function (channelName, handler) {
   }
 };
 
-Exchange.prototype.watchers = function (channelName) {
+SCExchange.prototype.watchers = function (channelName) {
   return this._channelEmitter.listeners(channelName);
 };
 
-Exchange.prototype.setMapper = function (mapper) {
+SCExchange.prototype.setMapper = function (mapper) {
   this._publicClientCluster.setMapper(mapper);
 };
 
-Exchange.prototype.getMapper = function () {
+SCExchange.prototype.getMapper = function () {
   return this._publicClientCluster.getMapper();
 };
 
-Exchange.prototype.map = function () {
+SCExchange.prototype.map = function () {
   return this._publicClientCluster.map.apply(this._publicClientCluster, arguments);
 };
 
@@ -501,7 +501,7 @@ var Client = module.exports.Client = function (options) {
   this._sockets = {};
 
   this._exchangeSubscriptions = {};
-  this._exchangeClient = new Exchange(this._privateClientCluster, this._publicClientCluster, this);
+  this._exchangeClient = new SCExchange(this._privateClientCluster, this._publicClientCluster, this);
 
   this._clientSubscribers = {};
 
