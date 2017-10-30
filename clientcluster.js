@@ -31,7 +31,7 @@ var ClientCluster = function (clients) {
     'getAll',
     'count',
     'registerDeathQuery',
-    'run',
+    'exec',
     'query',
     'remove',
     'removeRange',
