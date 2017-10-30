@@ -83,9 +83,9 @@ AbstractDataClient.prototype.extractValues = function (object) {
 };
 
 /*
-  run(queryFn,[ data, callback])
+  exec(queryFn,[ data, callback])
 */
-AbstractDataClient.prototype.run = function () {
+AbstractDataClient.prototype.exec = function () {
   var options = {};
 
   var callback;
@@ -99,7 +99,7 @@ AbstractDataClient.prototype.run = function () {
   if (arguments[1] && !(arguments[1] instanceof Function)) {
     options.data = arguments[1];
   }
-  this._dataClient.run(arguments[0], options, callback);
+  this._dataClient.exec(arguments[0], options, callback);
 };
 
 
@@ -451,7 +451,7 @@ var Client = module.exports.Client = function (options) {
         return clientIds;
       }
       return hasher(key);
-    } else if (method == 'query' || method == 'run' || method == 'send') {
+    } else if (method == 'query' || method == 'exec' || method == 'send') {
       var mapIndex = key.mapIndex;
       if (mapIndex) {
         // A mapIndex of * means that the action should be sent to all
