@@ -3,8 +3,6 @@ var scBroker = require('sc-broker');
 var async = require('async');
 var ClientCluster = require('./clientcluster').ClientCluster;
 var SCChannel = require('sc-channel').SCChannel;
-var utils = require('./utils');
-var isEmpty = utils.isEmpty;
 var hash = require('sc-hasher').hash;
 
 var scErrors = require('sc-errors');
@@ -504,6 +502,7 @@ var Client = module.exports.Client = function (options) {
   this._exchangeClient = new SCExchange(this._privateClientCluster, this._publicClientCluster, this);
 
   this._clientSubscribers = {};
+  this._clientSubscribersCounter = {};
 
   var readyNum = 0;
   var firstTime = true;
@@ -546,8 +545,11 @@ Client.prototype.exchange = function () {
 Client.prototype._dropUnusedSubscriptions = function (channel, callback) {
   var self = this;
 
-  if (isEmpty(this._clientSubscribers[channel])) {
+  var subscriberCount = this._clientSubscribersCounter[channel];
+  if (subscriberCount == null || subscriberCount <= 0) {
     delete this._clientSubscribers[channel];
+    delete this._clientSubscribersCounter[channel];
+    
     if (!this._exchangeSubscriptions[channel]) {
       self._privateClientCluster.unsubscribe(channel, callback);
       return;
@@ -615,8 +617,10 @@ Client.prototype.subscribeSocket = function (socket, channel, callback) {
     if (!err) {
       if (!self._clientSubscribers[channel]) {
         self._clientSubscribers[channel] = {};
+        self._clientSubscribersCounter[channel] = 0;
       }
       self._clientSubscribers[channel][socket.id] = socket;
+      self._clientSubscribersCounter[channel]++;
     }
     callback && callback(err);
   };
@@ -629,8 +633,11 @@ Client.prototype.unsubscribeSocket = function (socket, channel, callback) {
 
   if (this._clientSubscribers[channel]) {
     delete this._clientSubscribers[channel][socket.id];
-    if (isEmpty(this._clientSubscribers[channel])) {
+    this._clientSubscribersCounter[channel]--;
+
+    if (this._clientSubscribersCounter[channel] <= 0) {
       delete this._clientSubscribers[channel];
+      delete this._clientSubscribersCounter[channel];
     }
   }
   this._dropUnusedSubscriptions(channel, function () {
