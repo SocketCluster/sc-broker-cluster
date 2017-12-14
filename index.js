@@ -306,6 +306,7 @@ var Server = module.exports.Server = function (options) {
 
   var dataServer;
   this._dataServers = [];
+  this._shuttingDown = false;
 
   var readyCount = 0;
   var len = options.brokers.length;
@@ -375,6 +376,10 @@ var Server = module.exports.Server = function (options) {
           code: brokerInfo.code,
           signal: brokerInfo.signal
         });
+
+        if (self._shuttingDown) {
+          return;
+        }
         launchServer(i);
       });
 
@@ -401,7 +406,10 @@ Server.prototype.sendToBroker = function (brokerId, data, callback) {
   }
 };
 
-Server.prototype.destroy = function () {
+Server.prototype.destroy = function (options) {
+  if (options && options.permanent) {
+    this._shuttingDown = true;
+  }
   for (var i in this._dataServers) {
     if (this._dataServers.hasOwnProperty(i)) {
       this._dataServers[i].destroy();
@@ -549,7 +557,7 @@ Client.prototype._dropUnusedSubscriptions = function (channel, callback) {
   if (subscriberCount == null || subscriberCount <= 0) {
     delete this._clientSubscribers[channel];
     delete this._clientSubscribersCounter[channel];
-    
+
     if (!this._exchangeSubscriptions[channel]) {
       self._privateClientCluster.unsubscribe(channel, callback);
       return;
