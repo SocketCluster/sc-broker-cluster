@@ -377,10 +377,9 @@ var Server = module.exports.Server = function (options) {
           signal: brokerInfo.signal
         });
 
-        if (self._shuttingDown) {
-          return;
+        if (!self._shuttingDown) {
+          launchServer(i);
         }
-        launchServer(i);
       });
 
       dataServer.on('brokerMessage', function (brokerId, data, callback) {
@@ -406,15 +405,17 @@ Server.prototype.sendToBroker = function (brokerId, data, callback) {
   }
 };
 
-Server.prototype.destroy = function (options) {
-  if (options && options.permanent) {
-    this._shuttingDown = true;
-  }
+Server.prototype.killBrokers = function () {
   for (var i in this._dataServers) {
     if (this._dataServers.hasOwnProperty(i)) {
       this._dataServers[i].destroy();
     }
   }
+};
+
+Server.prototype.destroy = function () {
+  this._shuttingDown = true;
+  this.killBrokers();
 };
 
 
