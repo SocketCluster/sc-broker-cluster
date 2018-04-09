@@ -366,8 +366,15 @@ var Server = module.exports.Server = function (options) {
       });
 
       dataServer.on('exit', function (brokerInfo) {
-        var err = new ProcessExitError('Broker server at socket path ' + socketPath + ' exited');
+        var exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
+        if (brokerInfo.signal != null) {
+          exitMessage += ' and signal ' + brokerInfo.signal;
+        }
+        var err = new ProcessExitError(exitMessage, brokerInfo.code);
         err.pid = process.pid;
+        if (brokerInfo.signal != null) {
+          err.signal = brokerInfo.signal;
+        }
         self.emit('error', err);
 
         self.emit('brokerExit', {
