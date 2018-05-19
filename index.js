@@ -635,8 +635,10 @@ Client.prototype.subscribeSocket = function (socket, channel, callback) {
         self._clientSubscribers[channel] = {};
         self._clientSubscribersCounter[channel] = 0;
       }
+      if (!self._clientSubscribers[channel][socket.id]) {
+        self._clientSubscribersCounter[channel]++;
+      }
       self._clientSubscribers[channel][socket.id] = socket;
-      self._clientSubscribersCounter[channel]++;
     }
     callback && callback(err);
   };
@@ -648,12 +650,14 @@ Client.prototype.unsubscribeSocket = function (socket, channel, callback) {
   var self = this;
 
   if (this._clientSubscribers[channel]) {
-    delete this._clientSubscribers[channel][socket.id];
-    this._clientSubscribersCounter[channel]--;
+    if (this._clientSubscribers[channel][socket.id]) {
+      this._clientSubscribersCounter[channel]--;
+      delete this._clientSubscribers[channel][socket.id];
 
-    if (this._clientSubscribersCounter[channel] <= 0) {
-      delete this._clientSubscribers[channel];
-      delete this._clientSubscribersCounter[channel];
+      if (this._clientSubscribersCounter[channel] <= 0) {
+        delete this._clientSubscribers[channel];
+        delete this._clientSubscribersCounter[channel];
+      }
     }
   }
   this._dropUnusedSubscriptions(channel, function () {
