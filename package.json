@@ -1,6 +1,6 @@
 {
   "name": "sc-broker-cluster",
-  "version": "6.1.4",
+  "version": "6.1.5",
   "description": "Realtime clustering engine",
   "keywords": [
     "broker",
