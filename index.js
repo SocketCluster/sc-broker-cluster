@@ -155,7 +155,7 @@ SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
   } else {
     channel.state = channel.UNSUBSCRIBED;
   }
-  if (oldState == channel.SUBSCRIBED) {
+  if (oldState === channel.SUBSCRIBED) {
     channel.emit('unsubscribe', channelName);
     EventEmitter.prototype.emit.call(this, 'unsubscribe', channelName);
   }
@@ -194,7 +194,7 @@ SCExchange.prototype.subscribe = function (channelName) {
     this._channels[channelName] = channel;
   }
 
-  if (channel.state == channel.UNSUBSCRIBED) {
+  if (channel.state === channel.UNSUBSCRIBED) {
     channel.state = channel.PENDING;
     this._ioClusterClient.subscribe(channelName, function (err) {
       if (err) {
@@ -211,7 +211,7 @@ SCExchange.prototype.unsubscribe = function (channelName) {
   var channel = this._channels[channelName];
 
   if (channel) {
-    if (channel.state != channel.UNSUBSCRIBED) {
+    if (channel.state !== channel.UNSUBSCRIBED) {
 
       this._triggerChannelUnsubscribe(channel);
 
@@ -249,10 +249,10 @@ SCExchange.prototype.subscriptions = function (includePending) {
       channel = this._channels[channelName];
 
       if (includePending) {
-        includeChannel = channel && (channel.state == channel.SUBSCRIBED ||
-          channel.state == channel.PENDING);
+        includeChannel = channel && (channel.state === channel.SUBSCRIBED ||
+          channel.state === channel.PENDING);
       } else {
-        includeChannel = channel && channel.state == channel.SUBSCRIBED;
+        includeChannel = channel && channel.state === channel.SUBSCRIBED;
       }
 
       if (includeChannel) {
@@ -266,10 +266,10 @@ SCExchange.prototype.subscriptions = function (includePending) {
 SCExchange.prototype.isSubscribed = function (channelName, includePending) {
   var channel = this._channels[channelName];
   if (includePending) {
-    return !!channel && (channel.state == channel.SUBSCRIBED ||
-      channel.state == channel.PENDING);
+    return !!channel && (channel.state === channel.SUBSCRIBED ||
+      channel.state === channel.PENDING);
   }
-  return !!channel && channel.state == channel.SUBSCRIBED;
+  return !!channel && channel.state === channel.SUBSCRIBED;
 };
 
 SCExchange.prototype.watch = function (channelName, handler) {
@@ -465,12 +465,12 @@ var Client = module.exports.Client = function (options) {
         return clientIds;
       }
       return hasher(key);
-    } else if (method == 'query' || method == 'exec' || method == 'send') {
+    } else if (method === 'query' || method === 'exec' || method === 'send') {
       var mapIndex = key.mapIndex;
       if (mapIndex) {
         // A mapIndex of * means that the action should be sent to all
         // brokers in the cluster.
-        if (mapIndex == '*') {
+        if (mapIndex === '*') {
           return clientIds;
         } else {
           if (mapIndex instanceof Array) {
@@ -486,7 +486,7 @@ var Client = module.exports.Client = function (options) {
         }
       }
       return 0;
-    } else if (method == 'removeAll') {
+    } else if (method === 'removeAll') {
       return clientIds;
     }
     return hasher(key);
@@ -547,7 +547,7 @@ Client.prototype.destroy = function (callback) {
 };
 
 Client.prototype.on = function (event, listener) {
-  if (event == 'ready' && this._ready) {
+  if (event === 'ready' && this._ready) {
     listener();
   } else {
     EventEmitter.prototype.on.apply(this, arguments);

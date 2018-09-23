@@ -76,7 +76,7 @@ var ClientCluster = function (clients) {
       var activeClients = mapOutput.targets;
 
       if (lastArg instanceof Function) {
-        if (mapOutput.type == 'single') {
+        if (mapOutput.type === 'single') {
           activeClients[0][method].apply(activeClients[0], arguments);
         } else {
           var result;
@@ -172,7 +172,7 @@ var ClientCluster = function (clients) {
   this.detailedMap = function (key, method) {
     var result = mapper(key, method, clientIds);
     var targets, type;
-    if (typeof result == 'number') {
+    if (typeof result === 'number') {
       type = 'single';
       targets = [clients[result % clients.length]];
     } else {
