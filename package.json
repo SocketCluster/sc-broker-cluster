@@ -24,10 +24,10 @@
   },
   "dependencies": {
     "async": "2.0.0",
-    "sc-broker": "^5.2.1",
-    "sc-channel": "^1.1.0",
-    "sc-errors": "^1.4.0",
-    "sc-hasher": "^1.0.0"
+    "sc-broker": "^6.0.0",
+    "sc-channel": "^1.2.0",
+    "sc-errors": "^1.4.1",
+    "sc-hasher": "^1.0.1"
   },
   "main": "index",
   "engines": {
