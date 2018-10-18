@@ -72,32 +72,17 @@ AbstractDataClient.prototype.hasKey = function () {
   this._dataClient.hasKey.apply(this._dataClient, arguments);
 };
 
+// TODO 2: Test
+AbstractDataClient.prototype.exec = function () {
+  return this._dataClient.exec.apply(this._dataClient, arguments);
+};
+
 AbstractDataClient.prototype.extractKeys = function (object) {
   return this._dataClient.extractKeys(object);
 };
 
 AbstractDataClient.prototype.extractValues = function (object) {
   return this._dataClient.extractValues(object);
-};
-
-/*
-  exec(queryFn,[ data, callback])
-*/
-AbstractDataClient.prototype.exec = function () {
-  var options = {};
-
-  var callback;
-
-  if (arguments[1] instanceof Function) {
-    callback = arguments[1];
-  } else {
-    options.data = arguments[1];
-    callback = arguments[2];
-  }
-  if (arguments[1] && !(arguments[1] instanceof Function)) {
-    options.data = arguments[1];
-  }
-  this._dataClient.exec(arguments[0], options, callback);
 };
 
 
@@ -161,32 +146,38 @@ SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
   }
 };
 
-SCExchange.prototype.send = function (data, mapIndex, callback) {
+// TODO 2: Test
+SCExchange.prototype.sendRequest = function (data, mapIndex) {
   if (mapIndex == null) {
     // Send to all brokers in cluster if mapIndex is not provided
     mapIndex = '*';
   }
-  var targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'send');
-  var len = targetClients.length;
-  var tasks = [];
+  var targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendRequest');
 
-  for (var i = 0; i < len; i++) {
-    (function (client) {
-      tasks.push(function (cb) {
-        client.send(data, cb);
-      });
-    })(targetClients[i]);
-  }
-  async.parallel(tasks, callback);
+  var sendToClientsPromises = targetClients.map((client) => {
+    return client.sendRequest(data);
+  });
+  return Promise.all(sendToClientsPromises);
 };
 
-SCExchange.prototype.publish = function (channelName, data, callback) {
-  this._ioClusterClient.publish(channelName, data, callback);
+SCExchange.prototype.sendMessage = function (data, mapIndex) {
+  if (mapIndex == null) {
+    // Send to all brokers in cluster if mapIndex is not provided
+    mapIndex = '*';
+  }
+  var targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendMessage');
+
+  targetClients.forEach((client) => {
+    return client.sendMessage(data);
+  });
+  return Promise.resolve();
+};
+
+SCExchange.prototype.publish = function (channelName, data) {
+  return this._ioClusterClient.publish(channelName, data);
 };
 
 SCExchange.prototype.subscribe = function (channelName) {
-  var self = this;
-
   var channel = this._channels[channelName];
 
   if (!channel) {
@@ -196,12 +187,12 @@ SCExchange.prototype.subscribe = function (channelName) {
 
   if (channel.state === channel.UNSUBSCRIBED) {
     channel.state = channel.PENDING;
-    this._ioClusterClient.subscribe(channelName, function (err) {
-      if (err) {
-        self._triggerChannelSubscribeFail(err, channel);
-      } else {
-        self._triggerChannelSubscribe(channel);
-      }
+    this._ioClusterClient.subscribe(channelName)
+    .then(() => {
+      this._triggerChannelSubscribe(channel);
+    })
+    .catch((err) => {
+      this._triggerChannelSubscribeFail(err, channel);
     });
   }
   return channel;
@@ -243,23 +234,23 @@ SCExchange.prototype.destroyChannel = function (channelName) {
 
 SCExchange.prototype.subscriptions = function (includePending) {
   var subs = [];
-  var channel, includeChannel;
-  for (var channelName in this._channels) {
-    if (this._channels.hasOwnProperty(channelName)) {
-      channel = this._channels[channelName];
 
-      if (includePending) {
-        includeChannel = channel && (channel.state === channel.SUBSCRIBED ||
-          channel.state === channel.PENDING);
-      } else {
-        includeChannel = channel && channel.state === channel.SUBSCRIBED;
-      }
+  Object.keys(this._channels).forEach((channelName) => {
+    var channel = this._channels[channelName];
+    var includeChannel;
 
-      if (includeChannel) {
-        subs.push(channelName);
-      }
+    if (includePending) {
+      includeChannel = channel && (channel.state === channel.SUBSCRIBED ||
+        channel.state === channel.PENDING);
+    } else {
+      includeChannel = channel && channel.state === channel.SUBSCRIBED;
     }
-  }
+
+    if (includeChannel) {
+      subs.push(channelName);
+    }
+  });
+
   return subs;
 };
 
@@ -302,8 +293,6 @@ SCExchange.prototype.map = function () {
 
 
 var Server = module.exports.Server = function (options) {
-  var self = this;
-
   var dataServer;
   this._dataServers = [];
   this._shuttingDown = false;
@@ -314,12 +303,12 @@ var Server = module.exports.Server = function (options) {
   var startDebugPort = options.debug;
   var startInspectPort = options.inspect;
 
-  var triggerBrokerStart = function (brokerInfo) {
-    self.emit('brokerStart', brokerInfo);
+  var triggerBrokerStart = (brokerInfo) => {
+    this.emit('brokerStart', brokerInfo);
   };
 
   for (var i = 0; i < len; i++) {
-    var launchServer = function (i) {
+    var launchServer = (i) => {
       var socketPath = options.brokers[i];
 
       dataServer = scBroker.createServer({
@@ -337,13 +326,13 @@ var Server = module.exports.Server = function (options) {
         brokerOptions: options.brokerOptions
       });
 
-      self._dataServers[i] = dataServer;
+      this._dataServers[i] = dataServer;
 
       if (firstTime) {
-        dataServer.on('ready', function (brokerInfo) {
+        dataServer.on('ready', (brokerInfo) => {
           if (++readyCount >= options.brokers.length) {
             firstTime = false;
-            self.emit('ready');
+            this.emit('ready');
           }
           triggerBrokerStart({
             id: brokerInfo.id,
@@ -352,7 +341,7 @@ var Server = module.exports.Server = function (options) {
           });
         });
       } else {
-        dataServer.on('ready', function (brokerInfo) {
+        dataServer.on('ready', (brokerInfo) => {
           triggerBrokerStart({
             id: brokerInfo.id,
             pid: brokerInfo.pid,
@@ -361,11 +350,11 @@ var Server = module.exports.Server = function (options) {
         });
       }
 
-      dataServer.on('error', function (err) {
-        self.emit('error', err);
+      dataServer.on('error', (err) => {
+        this.emit('error', err);
       });
 
-      dataServer.on('exit', function (brokerInfo) {
+      dataServer.on('exit', (brokerInfo) => {
         var exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
         if (brokerInfo.signal != null) {
           exitMessage += ' and signal ' + brokerInfo.signal;
@@ -375,22 +364,26 @@ var Server = module.exports.Server = function (options) {
         if (brokerInfo.signal != null) {
           err.signal = brokerInfo.signal;
         }
-        self.emit('error', err);
+        this.emit('error', err);
 
-        self.emit('brokerExit', {
+        this.emit('brokerExit', {
           id: brokerInfo.id,
           pid: brokerInfo.pid,
           code: brokerInfo.code,
           signal: brokerInfo.signal
         });
 
-        if (!self._shuttingDown) {
+        if (!this._shuttingDown) {
           launchServer(i);
         }
       });
 
-      dataServer.on('brokerMessage', function (brokerId, data, callback) {
-        self.emit('brokerMessage', brokerId, data, callback);
+      dataServer.on('brokerRequest', (brokerId, data, callback) => {
+        this.emit('brokerRequest', brokerId, data, callback);
+      });
+
+      dataServer.on('brokerMessage', (brokerId, data) => {
+        this.emit('brokerMessage', brokerId, data);
       });
     };
 
@@ -400,24 +393,33 @@ var Server = module.exports.Server = function (options) {
 
 Server.prototype = Object.create(EventEmitter.prototype);
 
-Server.prototype.sendToBroker = function (brokerId, data, callback) {
+Server.prototype.sendRequestToBroker = function (brokerId, data) {
   var targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
-    targetBroker.sendToBroker(data, callback);
-  } else {
-    var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
-    err.pid = process.pid;
-    this.emit('error', err);
-    callback && callback(err);
+    return targetBroker.sendRequestToBroker(data);
   }
+  var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  err.pid = process.pid;
+  this.emit('error', err);
+  return Promise.reject(err);
+};
+
+Server.prototype.sendMessageToBroker = function (brokerId, data) {
+  var targetBroker = this._dataServers[brokerId];
+  if (targetBroker) {
+    targetBroker.sendMessageToBroker(data);
+    return Promise.resolve();
+  }
+  var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  err.pid = process.pid;
+  this.emit('error', err);
+  return Promise.reject(err);
 };
 
 Server.prototype.killBrokers = function () {
-  for (var i in this._dataServers) {
-    if (this._dataServers.hasOwnProperty(i)) {
-      this._dataServers[i].destroy();
-    }
-  }
+  this._dataServers.forEach((dataServer) => {
+    dataServer.destroy();
+  });
 };
 
 Server.prototype.destroy = function () {
@@ -427,28 +429,22 @@ Server.prototype.destroy = function () {
 
 
 var Client = module.exports.Client = function (options) {
-  var self = this;
-
   this.options = options;
   this._ready = false;
 
-  var dataClient;
   var dataClients = [];
 
-  for (var i in options.brokers) {
-    if (options.brokers.hasOwnProperty(i)) {
-      var socketPath = options.brokers[i];
-      dataClient = scBroker.createClient({
-        socketPath: socketPath,
-        secretKey: options.secretKey,
-        pubSubBatchDuration: options.pubSubBatchDuration,
-        connectRetryErrorThreshold: options.connectRetryErrorThreshold
-      });
-      dataClients.push(dataClient);
-    }
-  }
+  options.brokers.forEach((socketPath) => {
+    var dataClient = scBroker.createClient({
+      socketPath: socketPath,
+      secretKey: options.secretKey,
+      pubSubBatchDuration: options.pubSubBatchDuration,
+      connectRetryErrorThreshold: options.connectRetryErrorThreshold
+    });
+    dataClients.push(dataClient);
+  });
 
-  var hasher = function (key) {
+  var hasher = (key) => {
     return hash(key, dataClients.length);
   };
 
@@ -459,7 +455,7 @@ var Client = module.exports.Client = function (options) {
     isSubscribed: true
   };
 
-  this._defaultMapper = function (key, method, clientIds) {
+  this._defaultMapper = (key, method, clientIds) => {
     if (channelMethods[method]) {
       if (key == null) {
         return clientIds;
@@ -492,11 +488,11 @@ var Client = module.exports.Client = function (options) {
     return hasher(key);
   };
 
-  var emitError = function (error) {
-    self.emit('error', error);
+  var emitError = (error) => {
+    this.emit('error', error);
   };
-  var emitWarning = function (warning) {
-    self.emit('warning', warning);
+  var emitWarning = (warning) => {
+    this.emit('warning', warning);
   };
 
   // The user cannot change the _defaultMapper for _privateClientCluster.
@@ -523,27 +519,25 @@ var Client = module.exports.Client = function (options) {
   var readyNum = 0;
   var firstTime = true;
 
-  var dataClientReady = function () {
+  var dataClientReady = () => {
     if (++readyNum >= dataClients.length && firstTime) {
       firstTime = false;
-      self._ready = true;
-      self.emit('ready');
+      this._ready = true;
+      this.emit('ready');
     }
   };
 
-  for (var j in dataClients) {
-    if (dataClients.hasOwnProperty(j)) {
-      dataClients[j].on('ready', dataClientReady);
-    }
-  }
+  dataClients.forEach((dataClient) => {
+    dataClient.on('ready', dataClientReady);
+  });
 
   this._privateClientCluster.on('message', this._handleExchangeMessage.bind(this));
 };
 
 Client.prototype = Object.create(EventEmitter.prototype);
 
-Client.prototype.destroy = function (callback) {
-  this._privateClientCluster.removeAll(callback);
+Client.prototype.destroy = function () {
+  return this._privateClientCluster.removeAll();
 };
 
 Client.prototype.on = function (event, listener) {
@@ -558,65 +552,52 @@ Client.prototype.exchange = function () {
   return this._exchangeClient;
 };
 
-Client.prototype._dropUnusedSubscriptions = function (channel, callback) {
-  var self = this;
-
+Client.prototype._dropUnusedSubscriptions = function (channel) {
   var subscriberCount = this._clientSubscribersCounter[channel];
   if (subscriberCount == null || subscriberCount <= 0) {
     delete this._clientSubscribers[channel];
     delete this._clientSubscribersCounter[channel];
 
     if (!this._exchangeSubscriptions[channel]) {
-      self._privateClientCluster.unsubscribe(channel, callback);
-      return;
+      return this._privateClientCluster.unsubscribe(channel);
     }
   }
-  callback && callback();
+  return Promise.resolve();
 };
 
-Client.prototype.publish = function (channelName, data, callback) {
-  this._privateClientCluster.publish(channelName, data, callback);
+Client.prototype.publish = function (channelName, data) {
+  return this._privateClientCluster.publish(channelName, data);
 };
 
-Client.prototype.subscribe = function (channel, callback) {
-  var self = this;
-
+Client.prototype.subscribe = function (channel) {
   if (!this._exchangeSubscriptions[channel]) {
     this._exchangeSubscriptions[channel] = 'pending';
-    this._privateClientCluster.subscribe(channel, function (err) {
-      if (err) {
-        delete self._exchangeSubscriptions[channel];
-        self._dropUnusedSubscriptions(channel);
-      } else {
-        self._exchangeSubscriptions[channel] = true;
-      }
-      callback && callback(err);
-    });
-  } else {
-    callback && callback();
-  }
-};
-
-Client.prototype.unsubscribe = function (channel, callback) {
-  delete this._exchangeSubscriptions[channel];
-  this._dropUnusedSubscriptions(channel, callback);
-};
-
-Client.prototype.unsubscribeAll = function (callback) {
-  var self = this;
-
-  var tasks = [];
-  for (var channel in this._exchangeSubscriptions) {
-    if (this._exchangeSubscriptions.hasOwnProperty(channel)) {
+    return this._privateClientCluster.subscribe(channel)
+    .then(() => {
+      this._exchangeSubscriptions[channel] = true;
+    })
+    .catch((err) => {
       delete this._exchangeSubscriptions[channel];
-      (function (channel) {
-        tasks.push(function (cb) {
-          self._dropUnusedSubscriptions(channel, cb);
-        });
-      })(channel);
-    }
+      this._dropUnusedSubscriptions(channel);
+      throw err;
+    });
   }
-  async.parallel(tasks, callback);
+  return Promise.resolve();
+};
+
+Client.prototype.unsubscribe = function (channel) {
+  delete this._exchangeSubscriptions[channel];
+  return this._dropUnusedSubscriptions(channel);
+};
+
+Client.prototype.unsubscribeAll = function () {
+  var dropSubscriptionsPromises = Object.keys(this._exchangeSubscriptions)
+  .map((channel) => {
+    delete this._exchangeSubscriptions[channel];
+    return this._dropUnusedSubscriptions(channel);
+  });
+
+  return Promise.all(dropSubscriptionsPromises);
 };
 
 Client.prototype.isSubscribed = function (channel, includePending) {
@@ -626,29 +607,21 @@ Client.prototype.isSubscribed = function (channel, includePending) {
   return this._exchangeSubscriptions[channel] === true;
 };
 
-Client.prototype.subscribeSocket = function (socket, channel, callback) {
-  var self = this;
-
-  var addSubscription = function (err) {
-    if (!err) {
-      if (!self._clientSubscribers[channel]) {
-        self._clientSubscribers[channel] = {};
-        self._clientSubscribersCounter[channel] = 0;
-      }
-      if (!self._clientSubscribers[channel][socket.id]) {
-        self._clientSubscribersCounter[channel]++;
-      }
-      self._clientSubscribers[channel][socket.id] = socket;
+Client.prototype.subscribeSocket = function (socket, channel) {
+  return this._privateClientCluster.subscribe(channel)
+  .then(() => {
+    if (!this._clientSubscribers[channel]) {
+      this._clientSubscribers[channel] = {};
+      this._clientSubscribersCounter[channel] = 0;
     }
-    callback && callback(err);
-  };
-
-  this._privateClientCluster.subscribe(channel, addSubscription);
+    if (!this._clientSubscribers[channel][socket.id]) {
+      this._clientSubscribersCounter[channel]++;
+    }
+    this._clientSubscribers[channel][socket.id] = socket;
+  });
 };
 
-Client.prototype.unsubscribeSocket = function (socket, channel, callback) {
-  var self = this;
-
+Client.prototype.unsubscribeSocket = function (socket, channel) {
   if (this._clientSubscribers[channel]) {
     if (this._clientSubscribers[channel][socket.id]) {
       this._clientSubscribersCounter[channel]--;
@@ -660,16 +633,14 @@ Client.prototype.unsubscribeSocket = function (socket, channel, callback) {
       }
     }
   }
-  this._dropUnusedSubscriptions(channel, function () {
-    callback && callback.apply(self, arguments);
-  });
+  return this._dropUnusedSubscriptions(channel);
 };
 
 Client.prototype.setSCServer = function (scServer) {
   this.scServer = scServer;
 };
 
-Client.prototype._handleExchangeMessage = function (channel, message, options) {
+Client.prototype._handleExchangeMessage = function (channel, message) {
   var packet = {
     channel: channel,
     data: message
@@ -689,13 +660,11 @@ Client.prototype._handleExchangeMessage = function (channel, message, options) {
     }
   }
 
-  var subscriberSockets = this._clientSubscribers[channel];
+  var subscriberSockets = this._clientSubscribers[channel] || {};
 
-  for (var i in subscriberSockets) {
-    if (subscriberSockets.hasOwnProperty(i)) {
-      subscriberSockets[i].emit('#publish', packet, null, emitOptions);
-    }
-  }
+  Object.keys(subscriberSockets).forEach((i) => {
+    subscriberSockets[i].emit('#publish', packet, null, emitOptions);
+  });
 
   this.emit('message', packet);
 };
