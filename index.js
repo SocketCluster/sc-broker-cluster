@@ -407,8 +407,7 @@ Server.prototype.sendRequestToBroker = function (brokerId, data) {
 Server.prototype.sendMessageToBroker = function (brokerId, data) {
   var targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
-    targetBroker.sendMessageToBroker(data);
-    return Promise.resolve();
+    return targetBroker.sendMessageToBroker(data);
   }
   var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
   err.pid = process.pid;
