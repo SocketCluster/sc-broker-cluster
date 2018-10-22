@@ -118,7 +118,6 @@ var ClientCluster = function (clients) {
     };
   });
 
-  // TODO 2: Test
   clientUtils.forEach((method) => {
     this[method] = client[method].bind(client);
   });

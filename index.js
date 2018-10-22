@@ -72,7 +72,6 @@ AbstractDataClient.prototype.hasKey = function () {
   this._dataClient.hasKey.apply(this._dataClient, arguments);
 };
 
-// TODO 2: Test
 AbstractDataClient.prototype.exec = function () {
   return this._dataClient.exec.apply(this._dataClient, arguments);
 };
@@ -146,7 +145,6 @@ SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
   }
 };
 
-// TODO 2: Test
 SCExchange.prototype.sendRequest = function (data, mapIndex) {
   if (mapIndex == null) {
     // Send to all brokers in cluster if mapIndex is not provided
@@ -157,6 +155,9 @@ SCExchange.prototype.sendRequest = function (data, mapIndex) {
   var sendToClientsPromises = targetClients.map((client) => {
     return client.sendRequest(data);
   });
+  if (typeof mapIndex === 'number') {
+    return sendToClientsPromises[0];
+  }
   return Promise.all(sendToClientsPromises);
 };
 
@@ -168,7 +169,7 @@ SCExchange.prototype.sendMessage = function (data, mapIndex) {
   var targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendMessage');
 
   targetClients.forEach((client) => {
-    return client.sendMessage(data);
+    client.sendMessage(data);
   });
   return Promise.resolve();
 };
@@ -450,8 +451,7 @@ var Client = module.exports.Client = function (options) {
   var channelMethods = {
     publish: true,
     subscribe: true,
-    unsubscribe: true,
-    isSubscribed: true
+    unsubscribe: true
   };
 
   this._defaultMapper = (key, method, clientIds) => {
@@ -460,7 +460,12 @@ var Client = module.exports.Client = function (options) {
         return clientIds;
       }
       return hasher(key);
-    } else if (method === 'query' || method === 'exec' || method === 'send') {
+    } else if (
+      method === 'query' ||
+      method === 'exec' ||
+      method === 'sendRequest' ||
+      method === 'sendMessage'
+    ) {
       var mapIndex = key.mapIndex;
       if (mapIndex) {
         // A mapIndex of * means that the action should be sent to all
@@ -468,7 +473,7 @@ var Client = module.exports.Client = function (options) {
         if (mapIndex === '*') {
           return clientIds;
         } else {
-          if (mapIndex instanceof Array) {
+          if (Array.isArray(mapIndex)) {
             var hashedIndexes = [];
             var len = mapIndex.length;
             for (var i = 0; i < len; i++) {
