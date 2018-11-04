@@ -667,7 +667,7 @@ Client.prototype._handleExchangeMessage = function (channel, message) {
   var subscriberSockets = this._clientSubscribers[channel] || {};
 
   Object.keys(subscriberSockets).forEach((i) => {
-    subscriberSockets[i].emit('#publish', packet, null, emitOptions);
+    subscriberSockets[i].transmit('#publish', packet, emitOptions);
   });
 
   this.emit('message', packet);
