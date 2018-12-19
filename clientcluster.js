@@ -1,17 +1,10 @@
 var async = require('async');
-var EventEmitter = require('events').EventEmitter;
+var StreamDemux = require('stream-demux');
 
-var ClientCluster = function (clients) {
+function ClientCluster(clients) {
   var self = this;
 
-  var handleMessage = function () {
-    var args = Array.prototype.slice.call(arguments);
-    self.emit.apply(self, ['message'].concat(args));
-  };
-
-  clients.forEach((client) => {
-    client.on('message', handleMessage);
-  });
+  this._listenerDemux = new StreamDemux();
 
   var i, method;
   var client = clients[0];
@@ -49,12 +42,24 @@ var ClientCluster = function (clients) {
   ];
 
   clients.forEach((client, i) => {
-    client.on('error', (error) => {
-      this.emit('error', error);
-    });
-    client.on('warning', (warning) => {
-      this.emit('warning', warning);
-    });
+    (async () => {
+      for await (let event of client.listener('error')) {
+        this.emit('error', event);
+      }
+    })();
+
+    (async () => {
+      for await (let event of client.listener('warning')) {
+        this.emit('warning', event);
+      }
+    })();
+
+    (async () => {
+      for await (let event of client.listener('message')) {
+        this.emit('message', event);
+      }
+    })();
+
     client.id = i;
     clientIds.push(i);
   });
@@ -155,8 +160,27 @@ var ClientCluster = function (clients) {
   this.map = function (key, method) {
     return self.detailedMap(key, method).targets;
   };
-};
 
-ClientCluster.prototype = Object.create(EventEmitter.prototype);
+  this.emit = function (eventName, data) {
+    self._listenerDemux.write(eventName, data);
+  };
+
+  this.listener = function (eventName) {
+    return self._listenerDemux.stream(eventName);
+  };
+
+  this.closeListener = function (eventName) {
+    self._listenerDemux.close(eventName);
+  };
+
+  // TODO 2: test
+  this.destroy = function () {
+    clients.forEach((client) => {
+      client.closeListener('error');
+      client.closeListener('warning');
+      client.closeListener('message');
+    });
+  };
+}
 
 module.exports.ClientCluster = ClientCluster;

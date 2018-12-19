@@ -1,4 +1,4 @@
-var EventEmitter = require('events').EventEmitter;
+var StreamDemux = require('stream-demux');
 var scBroker = require('sc-broker');
 var async = require('async');
 var ClientCluster = require('./clientcluster').ClientCluster;
@@ -10,9 +10,9 @@ var BrokerError = scErrors.BrokerError;
 var ProcessExitError = scErrors.ProcessExitError;
 
 
-var AbstractDataClient = function (dataClient) {
+function AbstractDataClient(dataClient) {
   this._dataClient = dataClient;
-};
+}
 
 AbstractDataClient.prototype = Object.create(EventEmitter.prototype);
 
@@ -85,49 +85,64 @@ AbstractDataClient.prototype.extractValues = function (object) {
 };
 
 
-var SCExchange = function (privateClientCluster, publicClientCluster, ioClusterClient) {
+function SCExchange(privateClientCluster, publicClientCluster, ioClusterClient) {
   AbstractDataClient.call(this, publicClientCluster);
 
   this._privateClientCluster = privateClientCluster;
   this._publicClientCluster = publicClientCluster;
   this._ioClusterClient = ioClusterClient;
-  this._channelEmitter = new EventEmitter();
-  this._channels = {};
+  this._channelMap = {};
 
-  this._messageHander = this._handleChannelMessage.bind(this);
+  this._channelEventDemux = new StreamDemux();
+  this._channelDataDemux = new StreamDemux();
 
-  this._ioClusterClient.on('message', this._messageHander);
-};
+  this._listenerDemux = new StreamDemux();
+
+  (async () => {
+    for await (let {channel, data} of this._ioClusterClient.listener('message')) {
+      this._channelDataDemux.write(channel, data);
+    }
+  })();
+}
 
 SCExchange.prototype = Object.create(AbstractDataClient.prototype);
 
-SCExchange.prototype.destroy = function () {
-  this._ioClusterClient.removeListener('message', this._messageHander);
+SCExchange.SUBSCRIBED = SCExchange.prototype.SUBSCRIBED = SCChannel.SUBSCRIBED;
+SCExchange.PENDING = SCExchange.prototype.PENDING = SCChannel.PENDING;
+SCExchange.UNSUBSCRIBED = SCExchange.prototype.UNSUBSCRIBED = SCChannel.UNSUBSCRIBED;
+
+SCExchange.prototype.listener = function (eventName) {
+  return this._listenerDemux.stream(eventName);
 };
 
-SCExchange.prototype._handleChannelMessage = function (message) {
-  var channelName = message.channel;
-  if (this.isSubscribed(channelName)) {
-    this._channelEmitter.emit(channelName, message.data);
-  }
+SCExchange.prototype.closeListener = function (eventName) {
+  this._listenerDemux.close(eventName);
+};
+
+SCExchange.prototype.emit = function (eventName, data) {
+  this._listenerDemux.write(eventName, data);
+};
+
+SCExchange.prototype.destroy = function () {
+  this._ioClusterClient.destroy();
 };
 
 SCExchange.prototype._triggerChannelSubscribe = function (channel) {
   var channelName = channel.name;
 
-  channel.state = channel.SUBSCRIBED;
+  channel.state = SCChannel.SUBSCRIBED;
 
-  channel.emit('subscribe', channelName);
-  EventEmitter.prototype.emit.call(this, 'subscribe', channelName);
+  this._channelEventDemux.write(`${channelName}/subscribe`, {});
+  this.emit('subscribe', {channel: channelName});
 };
 
 SCExchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
   var channelName = channel.name;
 
-  channel.state = channel.UNSUBSCRIBED;
+  channel.state = SCChannel.UNSUBSCRIBED;
 
-  channel.emit('subscribeFail', err, channelName);
-  EventEmitter.prototype.emit.call(this, 'subscribeFail', err, channelName);
+  this._channelEventDemux.write(`${channelName}/subscribeFail`, {error: err});
+  this.emit('subscribeFail', {error: err, channel: channelName});
 };
 
 SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
@@ -137,11 +152,11 @@ SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
   if (newState) {
     channel.state = newState;
   } else {
-    channel.state = channel.UNSUBSCRIBED;
+    channel.state = SCChannel.UNSUBSCRIBED;
   }
-  if (oldState === channel.SUBSCRIBED) {
-    channel.emit('unsubscribe', channelName);
-    EventEmitter.prototype.emit.call(this, 'unsubscribe', channelName);
+  if (oldState === SCChannel.SUBSCRIBED) {
+    this._channelEventDemux.write(`${channelName}/unsubscribe`, {});
+    this.emit('unsubscribe', {channel: channelName});
   }
 };
 
@@ -179,105 +194,80 @@ SCExchange.prototype.publish = function (channelName, data) {
 };
 
 SCExchange.prototype.subscribe = function (channelName) {
-  var channel = this._channels[channelName];
+  let channel = this._channelMap[channelName];
 
   if (!channel) {
-    channel = new SCChannel(channelName, this);
-    this._channels[channelName] = channel;
+    channel = {
+      name: channelName,
+      state: SCChannel.PENDING
+    };
+    this._channelMap[channelName] = channel;
+    (async () => {
+      try {
+        await this._ioClusterClient.subscribe(channelName)
+      } catch (err) {
+        this._triggerChannelSubscribeFail(err, channel);
+        return;
+      }
+      this._triggerChannelSubscribe(channel);
+    })();
   }
 
-  if (channel.state === channel.UNSUBSCRIBED) {
-    channel.state = channel.PENDING;
-    this._ioClusterClient.subscribe(channelName)
-    .then(() => {
-      this._triggerChannelSubscribe(channel);
-    })
-    .catch((err) => {
-      this._triggerChannelSubscribeFail(err, channel);
-    });
-  }
-  return channel;
+  let channelDataStream = this._channelDataDemux.stream(channelName);
+  let channelIterable = new SCChannel(
+    channelName,
+    this,
+    this._channelEventDemux,
+    channelDataStream
+  );
+
+  return channelIterable;
 };
 
 SCExchange.prototype.unsubscribe = function (channelName) {
-  var channel = this._channels[channelName];
+  let channel = this._channelMap[channelName];
 
   if (channel) {
-    if (channel.state !== channel.UNSUBSCRIBED) {
+    this._triggerChannelUnsubscribe(channel);
 
-      this._triggerChannelUnsubscribe(channel);
+    // The only case in which unsubscribe can fail is if the connection is closed or dies.
+    // If that's the case, the server will automatically unsubscribe the client so
+    // we don't need to check for failure since this operation can never fail.
 
-      // The only case in which unsubscribe can fail is if the connection is closed or dies.
-      // If that's the case, the server will automatically unsubscribe the client so
-      // we don't need to check for failure since this operation can never really fail.
-
-      this._ioClusterClient.unsubscribe(channelName);
-    }
+    this._ioClusterClient.unsubscribe(channelName);
   }
 };
 
 SCExchange.prototype.channel = function (channelName) {
-  var currentChannel = this._channels[channelName];
+  let currentChannel = this._channelMap[channelName];
 
-  if (!currentChannel) {
-    currentChannel = new SCChannel(channelName, this);
-    this._channels[channelName] = currentChannel;
-  }
-  return currentChannel;
-};
+  let channelDataStream = this._channelDataDemux.stream(channelName);
+  let channelIterable = new SCChannel(
+    channelName,
+    this,
+    this._channelEventDemux,
+    channelDataStream
+  );
 
-SCExchange.prototype.destroyChannel = function (channelName) {
-  var channel = this._channels[channelName];
-  channel.unwatch();
-  channel.unsubscribe();
-  delete this._channels[channelName];
+  return channelIterable;
 };
 
 SCExchange.prototype.subscriptions = function (includePending) {
-  var subs = [];
-
-  Object.keys(this._channels).forEach((channelName) => {
-    var channel = this._channels[channelName];
-    var includeChannel;
-
-    if (includePending) {
-      includeChannel = channel && (channel.state === channel.SUBSCRIBED ||
-        channel.state === channel.PENDING);
-    } else {
-      includeChannel = channel && channel.state === channel.SUBSCRIBED;
-    }
-
-    if (includeChannel) {
+  let subs = [];
+  Object.keys(this._channelMap).forEach((channelName) => {
+    if (includePending || this._channelMap[channelName].state === SCChannel.SUBSCRIBED) {
       subs.push(channelName);
     }
   });
-
   return subs;
 };
 
 SCExchange.prototype.isSubscribed = function (channelName, includePending) {
-  var channel = this._channels[channelName];
+  let channel = this._channelMap[channelName];
   if (includePending) {
-    return !!channel && (channel.state === channel.SUBSCRIBED ||
-      channel.state === channel.PENDING);
+    return !!channel;
   }
-  return !!channel && channel.state === channel.SUBSCRIBED;
-};
-
-SCExchange.prototype.watch = function (channelName, handler) {
-  this._channelEmitter.on(channelName, handler);
-};
-
-SCExchange.prototype.unwatch = function (channelName, handler) {
-  if (handler) {
-    this._channelEmitter.removeListener(channelName, handler);
-  } else {
-    this._channelEmitter.removeAllListeners(channelName);
-  }
-};
-
-SCExchange.prototype.watchers = function (channelName) {
-  return this._channelEmitter.listeners(channelName);
+  return !!channel && channel.state === SCChannel.SUBSCRIBED;
 };
 
 SCExchange.prototype.setMapper = function (mapper) {
@@ -293,14 +283,11 @@ SCExchange.prototype.map = function () {
 };
 
 
-var Server = module.exports.Server = function (options) {
-  var dataServer;
+function Server(options) {
   this._dataServers = [];
   this._shuttingDown = false;
 
-  var readyCount = 0;
   var len = options.brokers.length;
-  var firstTime = true;
   var startDebugPort = options.debug;
   var startInspectPort = options.inspect;
 
@@ -308,11 +295,13 @@ var Server = module.exports.Server = function (options) {
     this.emit('brokerStart', brokerInfo);
   };
 
+  let serverReadyPromises = [];
+
   for (var i = 0; i < len; i++) {
-    var launchServer = (i) => {
+    var launchServer = async (i, isRespawn) => {
       var socketPath = options.brokers[i];
 
-      dataServer = scBroker.createServer({
+      let dataServer = scBroker.createServer({
         id: i,
         debug: startDebugPort ? startDebugPort + i : null,
         inspect: startInspectPort ? startInspectPort + i : null,
@@ -329,68 +318,66 @@ var Server = module.exports.Server = function (options) {
 
       this._dataServers[i] = dataServer;
 
-      if (firstTime) {
-        dataServer.on('ready', (brokerInfo) => {
-          if (++readyCount >= options.brokers.length) {
-            firstTime = false;
-            this.emit('ready');
+      (async () => {
+        for await (let event of dataServer.listener('error')) {
+          this.emit('error', event);
+        }
+      })();
+
+      (async () => {
+        for await (let {brokerInfo} of dataServer.listener('exit')) {
+          var exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
+          if (brokerInfo.signal != null) {
+            exitMessage += ' and signal ' + brokerInfo.signal;
           }
-          triggerBrokerStart({
+          var err = new ProcessExitError(exitMessage, brokerInfo.code);
+          err.pid = process.pid;
+          if (brokerInfo.signal != null) {
+            err.signal = brokerInfo.signal;
+          }
+          this.emit('error', err);
+
+          this.emit('brokerExit', {
             id: brokerInfo.id,
             pid: brokerInfo.pid,
-            respawn: false
+            code: brokerInfo.code,
+            signal: brokerInfo.signal
           });
-        });
-      } else {
-        dataServer.on('ready', (brokerInfo) => {
-          triggerBrokerStart({
-            id: brokerInfo.id,
-            pid: brokerInfo.pid,
-            respawn: true
-          });
-        });
-      }
 
-      dataServer.on('error', (err) => {
-        this.emit('error', err);
-      });
-
-      dataServer.on('exit', (brokerInfo) => {
-        var exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
-        if (brokerInfo.signal != null) {
-          exitMessage += ' and signal ' + brokerInfo.signal;
+          if (!this._shuttingDown) {
+            launchServer(i, true);
+          }
         }
-        var err = new ProcessExitError(exitMessage, brokerInfo.code);
-        err.pid = process.pid;
-        if (brokerInfo.signal != null) {
-          err.signal = brokerInfo.signal;
+      })();
+
+      (async () => {
+        for await (let event of dataServer.listener('brokerRequest')) {
+          this.emit('brokerRequest', event);
         }
-        this.emit('error', err);
+      })();
 
-        this.emit('brokerExit', {
-          id: brokerInfo.id,
-          pid: brokerInfo.pid,
-          code: brokerInfo.code,
-          signal: brokerInfo.signal
-        });
-
-        if (!this._shuttingDown) {
-          launchServer(i);
+      (async () => {
+        for await (let event of dataServer.listener('brokerMessage')) {
+          this.emit('brokerMessage', event);
         }
-      });
+      })();
 
-      dataServer.on('brokerRequest', (brokerId, data, callback) => {
-        this.emit('brokerRequest', brokerId, data, callback);
-      });
+      let brokerInfo = await dataServer.listener('ready').once();
 
-      dataServer.on('brokerMessage', (brokerId, data) => {
-        this.emit('brokerMessage', brokerId, data);
+      triggerBrokerStart({
+        id: brokerInfo.id,
+        pid: brokerInfo.pid,
+        respawn: !!isRespawn
       });
     };
 
-    launchServer(i);
+    serverReadyPromises.push(launchServer(i));
   }
-};
+  (async () => {
+    await Promise.all(serverReadyPromises);
+    this.emit('ready');
+  })();
+}
 
 Server.prototype = Object.create(EventEmitter.prototype);
 
@@ -428,11 +415,13 @@ Server.prototype.destroy = function () {
 };
 
 
-var Client = module.exports.Client = function (options) {
+function Client(options) {
   this.options = options;
-  this._ready = false;
+  this.isReady = false; // TODO 2: this._ready was renamed to this.isReady
 
   var dataClients = [];
+
+  this._listenerDemux = new StreamDemux();
 
   options.brokers.forEach((socketPath) => {
     var dataClient = scBroker.createClient({
@@ -492,25 +481,41 @@ var Client = module.exports.Client = function (options) {
     return hasher(key);
   };
 
-  var emitError = (error) => {
-    this.emit('error', error);
+  var emitError = (event) => {
+    this.emit('error', event);
   };
-  var emitWarning = (warning) => {
-    this.emit('warning', warning);
+  var emitWarning = (event) => {
+    this.emit('warning', event);
   };
 
   // The user cannot change the _defaultMapper for _privateClientCluster.
   this._privateClientCluster = new ClientCluster(dataClients);
   this._privateClientCluster.setMapper(this._defaultMapper);
-  this._privateClientCluster.on('error', emitError);
-  this._privateClientCluster.on('warning', emitWarning);
+  (async () => {
+    for await (let event of this._privateClientCluster.listener('error')) {
+      emitError(event);
+    }
+  })();
+  (async () => {
+    for await (let event of this._privateClientCluster.listener('warning')) {
+      emitWarning(event);
+    }
+  })();
 
   // The user can provide a custom mapper for _publicClientCluster.
   // The _defaultMapper is used by default.
   this._publicClientCluster = new ClientCluster(dataClients);
   this._publicClientCluster.setMapper(this._defaultMapper);
-  this._publicClientCluster.on('error', emitError);
-  this._publicClientCluster.on('warning', emitWarning);
+  (async () => {
+    for await (let event of this._publicClientCluster.listener('error')) {
+      emitError(event);
+    }
+  })();
+  (async () => {
+    for await (let event of this._publicClientCluster.listener('warning')) {
+      emitWarning(event);
+    }
+  })();
 
   this._sockets = {};
 
@@ -520,37 +525,49 @@ var Client = module.exports.Client = function (options) {
   this._clientSubscribers = {};
   this._clientSubscribersCounter = {};
 
-  var readyNum = 0;
-  var firstTime = true;
+  (async () => {
+    await Promise.all(
+      dataClients.map((dataClient) => {
+        return dataClient.listener('ready').once();
+      })
+    );
+    this.isReady = true;
+    this.emit('ready', {});
+  })();
 
-  var dataClientReady = () => {
-    if (++readyNum >= dataClients.length && firstTime) {
-      firstTime = false;
-      this._ready = true;
-      this.emit('ready');
+  (async () => {
+    for await (let event of this._privateClientCluster.listener('message')) {
+      this._handleExchangeMessage(event);
     }
-  };
-
-  dataClients.forEach((dataClient) => {
-    dataClient.on('ready', dataClientReady);
-  });
-
-  this._privateClientCluster.on('message', this._handleExchangeMessage.bind(this));
-};
+  })();
+}
 
 Client.prototype = Object.create(EventEmitter.prototype);
+
+Client.prototype.emit = function (eventName, data) {
+  this._listenerDemux.write(eventName, data);
+};
+
+Client.prototype.listener = function (eventName) {
+  return this._listenerDemux.stream(eventName);
+};
+
+Client.prototype.closeListener = function (eventName) {
+  this._listenerDemux.close(eventName);
+};
 
 Client.prototype.destroy = function () {
   return this._privateClientCluster.removeAll();
 };
 
-Client.prototype.on = function (event, listener) {
-  if (event === 'ready' && this._ready) {
-    listener();
-  } else {
-    EventEmitter.prototype.on.apply(this, arguments);
-  }
-};
+// TODO 2: The user of this function should check if this.isReady as a separate step
+// Client.prototype.on = function (event, listener) {
+//   if (event === 'ready' && this.isReady) {
+//     listener();
+//   } else {
+//     EventEmitter.prototype.on.apply(this, arguments);
+//   }
+// };
 
 Client.prototype.exchange = function () {
   return this._exchangeClient;
@@ -644,12 +661,7 @@ Client.prototype.setSCServer = function (scServer) {
   this.scServer = scServer;
 };
 
-Client.prototype._handleExchangeMessage = function (channel, message) {
-  var packet = {
-    channel: channel,
-    data: message
-  };
-
+Client.prototype._handleExchangeMessage = function (packet) {
   var emitOptions = {};
   if (this.scServer) {
     // Optimization
@@ -664,7 +676,7 @@ Client.prototype._handleExchangeMessage = function (channel, message) {
     }
   }
 
-  var subscriberSockets = this._clientSubscribers[channel] || {};
+  var subscriberSockets = this._clientSubscribers[packet.channel] || {};
 
   Object.keys(subscriberSockets).forEach((i) => {
     subscriberSockets[i].transmit('#publish', packet, emitOptions);
@@ -672,3 +684,6 @@ Client.prototype._handleExchangeMessage = function (channel, message) {
 
   this.emit('message', packet);
 };
+
+module.exports.Client = Client;
+module.exports.Server = Server;
