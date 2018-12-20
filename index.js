@@ -244,7 +244,7 @@ SCExchange.prototype.channel = function (channelName) {
   return channelIterable;
 };
 
-SCClientSocket.prototype.getChannelState = function (channelName) {
+SCExchange.prototype.getChannelState = function (channelName) {
   let channel = this._channelMap[channelName];
   if (channel) {
     return channel.state;
@@ -252,7 +252,7 @@ SCClientSocket.prototype.getChannelState = function (channelName) {
   return SCChannel.UNSUBSCRIBED;
 };
 
-SCClientSocket.prototype.getChannelOptions = function (channelName) {
+SCExchange.prototype.getChannelOptions = function (channelName) {
   return {};
 };
 
