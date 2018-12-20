@@ -14,8 +14,6 @@ function AbstractDataClient(dataClient) {
   this._dataClient = dataClient;
 }
 
-AbstractDataClient.prototype = Object.create(EventEmitter.prototype);
-
 AbstractDataClient.prototype.set = function () {
   this._dataClient.set.apply(this._dataClient, arguments);
 };
@@ -139,22 +137,16 @@ SCExchange.prototype._triggerChannelSubscribe = function (channel) {
 SCExchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
   var channelName = channel.name;
 
-  channel.state = SCChannel.UNSUBSCRIBED;
-
+  delete this._channelMap[channelName];
   this._channelEventDemux.write(`${channelName}/subscribeFail`, {error: err});
   this.emit('subscribeFail', {error: err, channel: channelName});
 };
 
-SCExchange.prototype._triggerChannelUnsubscribe = function (channel, newState) {
+SCExchange.prototype._triggerChannelUnsubscribe = function (channel) {
   var channelName = channel.name;
-  var oldState = channel.state;
 
-  if (newState) {
-    channel.state = newState;
-  } else {
-    channel.state = SCChannel.UNSUBSCRIBED;
-  }
-  if (oldState === SCChannel.SUBSCRIBED) {
+  delete this._channelMap[channelName];
+  if (channel.state === SCChannel.SUBSCRIBED) {
     this._channelEventDemux.write(`${channelName}/unsubscribe`, {});
     this.emit('unsubscribe', {channel: channelName});
   }
@@ -252,6 +244,18 @@ SCExchange.prototype.channel = function (channelName) {
   return channelIterable;
 };
 
+SCClientSocket.prototype.getChannelState = function (channelName) {
+  let channel = this._channelMap[channelName];
+  if (channel) {
+    return channel.state;
+  }
+  return SCChannel.UNSUBSCRIBED;
+};
+
+SCClientSocket.prototype.getChannelOptions = function (channelName) {
+  return {};
+};
+
 SCExchange.prototype.subscriptions = function (includePending) {
   let subs = [];
   Object.keys(this._channelMap).forEach((channelName) => {
@@ -292,8 +296,10 @@ function Server(options) {
   var startInspectPort = options.inspect;
 
   var triggerBrokerStart = (brokerInfo) => {
-    this.emit('brokerStart', brokerInfo);
+    this.emit('brokerStart', {brokerInfo});
   };
+
+  this._listenerDemux = new StreamDemux();
 
   let serverReadyPromises = [];
 
@@ -330,12 +336,12 @@ function Server(options) {
           if (brokerInfo.signal != null) {
             exitMessage += ' and signal ' + brokerInfo.signal;
           }
-          var err = new ProcessExitError(exitMessage, brokerInfo.code);
-          err.pid = process.pid;
+          var error = new ProcessExitError(exitMessage, brokerInfo.code);
+          error.pid = process.pid;
           if (brokerInfo.signal != null) {
-            err.signal = brokerInfo.signal;
+            error.signal = brokerInfo.signal;
           }
-          this.emit('error', err);
+          this.emit('error', {error});
 
           this.emit('brokerExit', {
             id: brokerInfo.id,
@@ -375,21 +381,31 @@ function Server(options) {
   }
   (async () => {
     await Promise.all(serverReadyPromises);
-    this.emit('ready');
+    this.emit('ready', {});
   })();
 }
 
-Server.prototype = Object.create(EventEmitter.prototype);
+Server.prototype.emit = function (eventName, data) {
+  this._listenerDemux.write(eventName, data);
+};
+
+Server.prototype.listener = function (eventName) {
+  return this._listenerDemux.stream(eventName);
+};
+
+Server.prototype.closeListener = function (eventName) {
+  this._listenerDemux.close(eventName);
+};
 
 Server.prototype.sendRequestToBroker = function (brokerId, data) {
   var targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
     return targetBroker.sendRequestToBroker(data);
   }
-  var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
-  err.pid = process.pid;
-  this.emit('error', err);
-  return Promise.reject(err);
+  var error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  error.pid = process.pid;
+  this.emit('error', {error});
+  return Promise.reject(error);
 };
 
 Server.prototype.sendMessageToBroker = function (brokerId, data) {
@@ -397,10 +413,10 @@ Server.prototype.sendMessageToBroker = function (brokerId, data) {
   if (targetBroker) {
     return targetBroker.sendMessageToBroker(data);
   }
-  var err = new BrokerError('Broker with id ' + brokerId + ' does not exist');
-  err.pid = process.pid;
-  this.emit('error', err);
-  return Promise.reject(err);
+  var error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  error.pid = process.pid;
+  this.emit('error', {error});
+  return Promise.reject(error);
 };
 
 Server.prototype.killBrokers = function () {
@@ -542,8 +558,6 @@ function Client(options) {
   })();
 }
 
-Client.prototype = Object.create(EventEmitter.prototype);
-
 Client.prototype.emit = function (eventName, data) {
   this._listenerDemux.write(eventName, data);
 };
@@ -590,20 +604,18 @@ Client.prototype.publish = function (channelName, data) {
   return this._privateClientCluster.publish(channelName, data);
 };
 
-Client.prototype.subscribe = function (channel) {
+Client.prototype.subscribe = async function (channel) {
   if (!this._exchangeSubscriptions[channel]) {
     this._exchangeSubscriptions[channel] = 'pending';
-    return this._privateClientCluster.subscribe(channel)
-    .then(() => {
-      this._exchangeSubscriptions[channel] = true;
-    })
-    .catch((err) => {
+    try {
+      await this._privateClientCluster.subscribe(channel);
+    } catch (err) {
       delete this._exchangeSubscriptions[channel];
       this._dropUnusedSubscriptions(channel);
       throw err;
-    });
+    }
+    this._exchangeSubscriptions[channel] = true;
   }
-  return Promise.resolve();
 };
 
 Client.prototype.unsubscribe = function (channel) {
@@ -628,18 +640,16 @@ Client.prototype.isSubscribed = function (channel, includePending) {
   return this._exchangeSubscriptions[channel] === true;
 };
 
-Client.prototype.subscribeSocket = function (socket, channel) {
-  return this._privateClientCluster.subscribe(channel)
-  .then(() => {
-    if (!this._clientSubscribers[channel]) {
-      this._clientSubscribers[channel] = {};
-      this._clientSubscribersCounter[channel] = 0;
-    }
-    if (!this._clientSubscribers[channel][socket.id]) {
-      this._clientSubscribersCounter[channel]++;
-    }
-    this._clientSubscribers[channel][socket.id] = socket;
-  });
+Client.prototype.subscribeSocket = async function (socket, channel) {
+  await this._privateClientCluster.subscribe(channel);
+  if (!this._clientSubscribers[channel]) {
+    this._clientSubscribers[channel] = {};
+    this._clientSubscribersCounter[channel] = 0;
+  }
+  if (!this._clientSubscribers[channel][socket.id]) {
+    this._clientSubscribersCounter[channel]++;
+  }
+  this._clientSubscribers[channel][socket.id] = socket;
 };
 
 Client.prototype.unsubscribeSocket = function (socket, channel) {
@@ -670,8 +680,8 @@ Client.prototype._handleExchangeMessage = function (packet) {
         event: '#publish',
         data: packet
       });
-    } catch (err) {
-      this.emit('error', err);
+    } catch (error) {
+      this.emit('error', {error});
       return;
     }
   }
