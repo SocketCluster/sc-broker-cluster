@@ -1,16 +1,16 @@
-var async = require('async');
-var StreamDemux = require('stream-demux');
+const async = require('async');
+const StreamDemux = require('stream-demux');
 
 function ClientCluster(clients) {
-  var self = this;
+  let self = this;
 
   this._listenerDemux = new StreamDemux();
 
-  var i, method;
-  var client = clients[0];
-  var clientIds = [];
+  let i, method;
+  let client = clients[0];
+  let clientIds = [];
 
-  var clientAsyncInterface = [
+  let clientAsyncInterface = [
     'subscribe',
     'unsubscribe',
     'publish',
@@ -36,7 +36,7 @@ function ClientCluster(clients) {
     'end'
   ];
 
-  var clientUtils = [
+  let clientUtils = [
     'extractKeys',
     'extractValues'
   ];
@@ -65,22 +65,22 @@ function ClientCluster(clients) {
   });
 
   // Default mapper maps to all clients.
-  var mapper = function () {
+  let mapper = function () {
     return clientIds;
   };
 
   clientAsyncInterface.forEach((method) => {
     this[method] = function () {
-      var args = arguments;
-      var key = args[0];
-      var mapOutput = self.detailedMap(key, method);
-      var activeClients = mapOutput.targets;
+      let args = arguments;
+      let key = args[0];
+      let mapOutput = self.detailedMap(key, method);
+      let activeClients = mapOutput.targets;
 
       if (mapOutput.type === 'single') {
         return activeClients[0][method].apply(activeClients[0], args);
       }
 
-      var resultsPromises = activeClients.map((activeClient) => {
+      let resultsPromises = activeClients.map((activeClient) => {
         return activeClient[method].apply(activeClient, args);
       });
 
@@ -88,21 +88,21 @@ function ClientCluster(clients) {
     }
   });
 
-  var multiKeyClientInterface = [
+  let multiKeyClientInterface = [
     'expire',
     'unexpire'
   ];
 
   multiKeyClientInterface.forEach((method) => {
     this[method] = function () {
-      var args = arguments;
-      var keys = args[0];
-      var clientArgsMap = {};
+      let args = arguments;
+      let keys = args[0];
+      let clientArgsMap = {};
 
       keys.forEach((key) => {
-        var activeClients = self.map(key, method);
+        let activeClients = self.map(key, method);
         activeClients.forEach((client) => {
-          var clientId = client.id;
+          let clientId = client.id;
           if (clientArgsMap[clientId] == null) {
             clientArgsMap[clientId] = [];
           }
@@ -110,12 +110,12 @@ function ClientCluster(clients) {
         });
       });
 
-      var partArgs = Array.prototype.slice.call(args, 1);
+      let partArgs = Array.prototype.slice.call(args, 1);
 
-      var resultsPromises = Object.keys(clientArgsMap).map((clientId) => {
-        var activeClient = clients[clientId];
-        var firstArg = clientArgsMap[clientId];
-        var newArgs = [firstArg].concat(partArgs);
+      let resultsPromises = Object.keys(clientArgsMap).map((clientId) => {
+        let activeClient = clients[clientId];
+        let firstArg = clientArgsMap[clientId];
+        let newArgs = [firstArg].concat(partArgs);
         return activeClient[method].apply(activeClient, newArgs);
       });
 
@@ -136,15 +136,15 @@ function ClientCluster(clients) {
   };
 
   this.detailedMap = function (key, method) {
-    var result = mapper(key, method, clientIds);
-    var targets, type;
+    let result = mapper(key, method, clientIds);
+    let targets, type;
     if (typeof result === 'number') {
       type = 'single';
       targets = [clients[result % clients.length]];
     } else {
       type = 'multi';
       if (Array.isArray(result)) {
-        var dataClients = [];
+        let dataClients = [];
         result.forEach((res) => {
           dataClients.push(clients[res % clients.length]);
         });

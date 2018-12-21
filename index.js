@@ -1,13 +1,13 @@
-var StreamDemux = require('stream-demux');
-var scBroker = require('sc-broker');
-var async = require('async');
-var ClientCluster = require('./clientcluster').ClientCluster;
-var SCChannel = require('sc-channel').SCChannel;
-var hash = require('sc-hasher').hash;
+const StreamDemux = require('stream-demux');
+const scBroker = require('sc-broker');
+const async = require('async');
+const ClientCluster = require('./clientcluster').ClientCluster;
+const SCChannel = require('sc-channel').SCChannel;
+const hash = require('sc-hasher').hash;
 
-var scErrors = require('sc-errors');
-var BrokerError = scErrors.BrokerError;
-var ProcessExitError = scErrors.ProcessExitError;
+const scErrors = require('sc-errors');
+const BrokerError = scErrors.BrokerError;
+const ProcessExitError = scErrors.ProcessExitError;
 
 
 function AbstractDataClient(dataClient) {
@@ -126,7 +126,7 @@ SCExchange.prototype.destroy = function () {
 };
 
 SCExchange.prototype._triggerChannelSubscribe = function (channel) {
-  var channelName = channel.name;
+  let channelName = channel.name;
 
   channel.state = SCChannel.SUBSCRIBED;
 
@@ -135,7 +135,7 @@ SCExchange.prototype._triggerChannelSubscribe = function (channel) {
 };
 
 SCExchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
-  var channelName = channel.name;
+  let channelName = channel.name;
 
   delete this._channelMap[channelName];
   this._channelEventDemux.write(`${channelName}/subscribeFail`, {error: err});
@@ -143,7 +143,7 @@ SCExchange.prototype._triggerChannelSubscribeFail = function (err, channel) {
 };
 
 SCExchange.prototype._triggerChannelUnsubscribe = function (channel) {
-  var channelName = channel.name;
+  let channelName = channel.name;
 
   delete this._channelMap[channelName];
   if (channel.state === SCChannel.SUBSCRIBED) {
@@ -157,9 +157,9 @@ SCExchange.prototype.sendRequest = function (data, mapIndex) {
     // Send to all brokers in cluster if mapIndex is not provided
     mapIndex = '*';
   }
-  var targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendRequest');
+  let targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendRequest');
 
-  var sendToClientsPromises = targetClients.map((client) => {
+  let sendToClientsPromises = targetClients.map((client) => {
     return client.sendRequest(data);
   });
   if (typeof mapIndex === 'number') {
@@ -173,7 +173,7 @@ SCExchange.prototype.sendMessage = function (data, mapIndex) {
     // Send to all brokers in cluster if mapIndex is not provided
     mapIndex = '*';
   }
-  var targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendMessage');
+  let targetClients = this._privateClientCluster.map({mapIndex: mapIndex}, 'sendMessage');
 
   targetClients.forEach((client) => {
     client.sendMessage(data);
@@ -291,11 +291,11 @@ function Server(options) {
   this._dataServers = [];
   this._shuttingDown = false;
 
-  var len = options.brokers.length;
-  var startDebugPort = options.debug;
-  var startInspectPort = options.inspect;
+  let len = options.brokers.length;
+  let startDebugPort = options.debug;
+  let startInspectPort = options.inspect;
 
-  var triggerBrokerStart = (brokerInfo) => {
+  let triggerBrokerStart = (brokerInfo) => {
     this.emit('brokerStart', {brokerInfo});
   };
 
@@ -303,9 +303,9 @@ function Server(options) {
 
   let serverReadyPromises = [];
 
-  for (var i = 0; i < len; i++) {
-    var launchServer = async (i, isRespawn) => {
-      var socketPath = options.brokers[i];
+  for (let i = 0; i < len; i++) {
+    let launchServer = async (i, isRespawn) => {
+      let socketPath = options.brokers[i];
 
       let dataServer = scBroker.createServer({
         id: i,
@@ -332,11 +332,11 @@ function Server(options) {
 
       (async () => {
         for await (let {brokerInfo} of dataServer.listener('exit')) {
-          var exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
+          let exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
           if (brokerInfo.signal != null) {
             exitMessage += ' and signal ' + brokerInfo.signal;
           }
-          var error = new ProcessExitError(exitMessage, brokerInfo.code);
+          let error = new ProcessExitError(exitMessage, brokerInfo.code);
           error.pid = process.pid;
           if (brokerInfo.signal != null) {
             error.signal = brokerInfo.signal;
@@ -398,22 +398,22 @@ Server.prototype.closeListener = function (eventName) {
 };
 
 Server.prototype.sendRequestToBroker = function (brokerId, data) {
-  var targetBroker = this._dataServers[brokerId];
+  let targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
     return targetBroker.sendRequestToBroker(data);
   }
-  var error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  let error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
   error.pid = process.pid;
   this.emit('error', {error});
   return Promise.reject(error);
 };
 
 Server.prototype.sendMessageToBroker = function (brokerId, data) {
-  var targetBroker = this._dataServers[brokerId];
+  let targetBroker = this._dataServers[brokerId];
   if (targetBroker) {
     return targetBroker.sendMessageToBroker(data);
   }
-  var error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  let error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
   error.pid = process.pid;
   this.emit('error', {error});
   return Promise.reject(error);
@@ -435,12 +435,12 @@ function Client(options) {
   this.options = options;
   this.isReady = false; // TODO 2: this._ready was renamed to this.isReady
 
-  var dataClients = [];
+  let dataClients = [];
 
   this._listenerDemux = new StreamDemux();
 
   options.brokers.forEach((socketPath) => {
-    var dataClient = scBroker.createClient({
+    let dataClient = scBroker.createClient({
       socketPath: socketPath,
       secretKey: options.secretKey,
       pubSubBatchDuration: options.pubSubBatchDuration,
@@ -449,11 +449,11 @@ function Client(options) {
     dataClients.push(dataClient);
   });
 
-  var hasher = (key) => {
+  let hasher = (key) => {
     return hash(key, dataClients.length);
   };
 
-  var channelMethods = {
+  let channelMethods = {
     publish: true,
     subscribe: true,
     unsubscribe: true
@@ -471,7 +471,7 @@ function Client(options) {
       method === 'sendRequest' ||
       method === 'sendMessage'
     ) {
-      var mapIndex = key.mapIndex;
+      let mapIndex = key.mapIndex;
       if (mapIndex) {
         // A mapIndex of * means that the action should be sent to all
         // brokers in the cluster.
@@ -479,9 +479,9 @@ function Client(options) {
           return clientIds;
         } else {
           if (Array.isArray(mapIndex)) {
-            var hashedIndexes = [];
-            var len = mapIndex.length;
-            for (var i = 0; i < len; i++) {
+            let hashedIndexes = [];
+            let len = mapIndex.length;
+            for (let i = 0; i < len; i++) {
               hashedIndexes.push(hasher(mapIndex[i]));
             }
             return hashedIndexes;
@@ -497,10 +497,10 @@ function Client(options) {
     return hasher(key);
   };
 
-  var emitError = (event) => {
+  let emitError = (event) => {
     this.emit('error', event);
   };
-  var emitWarning = (event) => {
+  let emitWarning = (event) => {
     this.emit('warning', event);
   };
 
@@ -588,7 +588,7 @@ Client.prototype.exchange = function () {
 };
 
 Client.prototype._dropUnusedSubscriptions = function (channel) {
-  var subscriberCount = this._clientSubscribersCounter[channel];
+  let subscriberCount = this._clientSubscribersCounter[channel];
   if (subscriberCount == null || subscriberCount <= 0) {
     delete this._clientSubscribers[channel];
     delete this._clientSubscribersCounter[channel];
@@ -624,7 +624,7 @@ Client.prototype.unsubscribe = function (channel) {
 };
 
 Client.prototype.unsubscribeAll = function () {
-  var dropSubscriptionsPromises = Object.keys(this._exchangeSubscriptions)
+  let dropSubscriptionsPromises = Object.keys(this._exchangeSubscriptions)
   .map((channel) => {
     delete this._exchangeSubscriptions[channel];
     return this._dropUnusedSubscriptions(channel);
@@ -672,7 +672,7 @@ Client.prototype.setSCServer = function (scServer) {
 };
 
 Client.prototype._handleExchangeMessage = function (packet) {
-  var emitOptions = {};
+  let emitOptions = {};
   if (this.scServer) {
     // Optimization
     try {
@@ -686,7 +686,7 @@ Client.prototype._handleExchangeMessage = function (packet) {
     }
   }
 
-  var subscriberSockets = this._clientSubscribers[packet.channel] || {};
+  let subscriberSockets = this._clientSubscribers[packet.channel] || {};
 
   Object.keys(subscriberSockets).forEach((i) => {
     subscriberSockets[i].transmit('#publish', packet, emitOptions);
