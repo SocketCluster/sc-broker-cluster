@@ -1,6 +1,6 @@
 const StreamDemux = require('stream-demux');
+const AsyncStreamEmitter = require('async-stream-emitter');
 const scBroker = require('sc-broker');
-const async = require('async');
 const ClientCluster = require('./clientcluster').ClientCluster;
 const SCChannel = require('sc-channel').SCChannel;
 const hash = require('sc-hasher').hash;
@@ -11,8 +11,11 @@ const ProcessExitError = scErrors.ProcessExitError;
 
 
 function AbstractDataClient(dataClient) {
+  AsyncStreamEmitter.call(this);
   this._dataClient = dataClient;
 }
+
+AbstractDataClient.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 AbstractDataClient.prototype.set = function () {
   this._dataClient.set.apply(this._dataClient, arguments);
@@ -94,8 +97,6 @@ function SCExchange(privateClientCluster, publicClientCluster, ioClusterClient) 
   this._channelEventDemux = new StreamDemux();
   this._channelDataDemux = new StreamDemux();
 
-  this._listenerDemux = new StreamDemux();
-
   (async () => {
     for await (let {channel, data} of this._ioClusterClient.listener('message')) {
       this._channelDataDemux.write(channel, data);
@@ -108,18 +109,6 @@ SCExchange.prototype = Object.create(AbstractDataClient.prototype);
 SCExchange.SUBSCRIBED = SCExchange.prototype.SUBSCRIBED = SCChannel.SUBSCRIBED;
 SCExchange.PENDING = SCExchange.prototype.PENDING = SCChannel.PENDING;
 SCExchange.UNSUBSCRIBED = SCExchange.prototype.UNSUBSCRIBED = SCChannel.UNSUBSCRIBED;
-
-SCExchange.prototype.listener = function (eventName) {
-  return this._listenerDemux.stream(eventName);
-};
-
-SCExchange.prototype.closeListener = function (eventName) {
-  this._listenerDemux.close(eventName);
-};
-
-SCExchange.prototype.emit = function (eventName, data) {
-  this._listenerDemux.write(eventName, data);
-};
 
 SCExchange.prototype.destroy = function () {
   this._ioClusterClient.destroy();
@@ -288,6 +277,8 @@ SCExchange.prototype.map = function () {
 
 
 function Server(options) {
+  AsyncStreamEmitter.call(this);
+
   this._dataServers = [];
   this._shuttingDown = false;
 
@@ -298,8 +289,6 @@ function Server(options) {
   let triggerBrokerStart = (brokerInfo) => {
     this.emit('brokerStart', {brokerInfo});
   };
-
-  this._listenerDemux = new StreamDemux();
 
   let serverReadyPromises = [];
 
@@ -385,17 +374,7 @@ function Server(options) {
   })();
 }
 
-Server.prototype.emit = function (eventName, data) {
-  this._listenerDemux.write(eventName, data);
-};
-
-Server.prototype.listener = function (eventName) {
-  return this._listenerDemux.stream(eventName);
-};
-
-Server.prototype.closeListener = function (eventName) {
-  this._listenerDemux.close(eventName);
-};
+Server.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 Server.prototype.sendRequestToBroker = function (brokerId, data) {
   let targetBroker = this._dataServers[brokerId];
@@ -432,12 +411,12 @@ Server.prototype.destroy = function () {
 
 
 function Client(options) {
+  AsyncStreamEmitter.call(this);
+
   this.options = options;
   this.isReady = false; // TODO 2: this._ready was renamed to this.isReady
 
   let dataClients = [];
-
-  this._listenerDemux = new StreamDemux();
 
   options.brokers.forEach((socketPath) => {
     let dataClient = scBroker.createClient({
@@ -558,17 +537,7 @@ function Client(options) {
   })();
 }
 
-Client.prototype.emit = function (eventName, data) {
-  this._listenerDemux.write(eventName, data);
-};
-
-Client.prototype.listener = function (eventName) {
-  return this._listenerDemux.stream(eventName);
-};
-
-Client.prototype.closeListener = function (eventName) {
-  this._listenerDemux.close(eventName);
-};
+Client.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 Client.prototype.destroy = function () {
   return this._privateClientCluster.removeAll();

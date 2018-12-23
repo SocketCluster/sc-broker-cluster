@@ -1,10 +1,9 @@
-const async = require('async');
-const StreamDemux = require('stream-demux');
+const AsyncStreamEmitter = require('async-stream-emitter');
 
 function ClientCluster(clients) {
-  let self = this;
+  AsyncStreamEmitter.call(this);
 
-  this._listenerDemux = new StreamDemux();
+  let self = this;
 
   let i, method;
   let client = clients[0];
@@ -161,26 +160,14 @@ function ClientCluster(clients) {
     return self.detailedMap(key, method).targets;
   };
 
-  this.emit = function (eventName, data) {
-    self._listenerDemux.write(eventName, data);
-  };
-
-  this.listener = function (eventName) {
-    return self._listenerDemux.stream(eventName);
-  };
-
-  this.closeListener = function (eventName) {
-    self._listenerDemux.close(eventName);
-  };
-
   // TODO 2: test
   this.destroy = function () {
     clients.forEach((client) => {
-      client.closeListener('error');
-      client.closeListener('warning');
-      client.closeListener('message');
+      client.closeAllListeners();
     });
   };
 }
+
+ClientCluster.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 module.exports.ClientCluster = ClientCluster;
