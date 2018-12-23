@@ -287,7 +287,7 @@ function Server(options) {
   let startInspectPort = options.inspect;
 
   let triggerBrokerStart = (brokerInfo) => {
-    this.emit('brokerStart', {brokerInfo});
+    this.emit('brokerStart', brokerInfo);
   };
 
   let serverReadyPromises = [];
