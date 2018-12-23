@@ -2,7 +2,7 @@ const StreamDemux = require('stream-demux');
 const AsyncStreamEmitter = require('async-stream-emitter');
 const scBroker = require('sc-broker');
 const ClientCluster = require('./clientcluster').ClientCluster;
-const SCChannel = require('sc-channel').SCChannel;
+const SCChannel = require('sc-channel');
 const hash = require('sc-hasher').hash;
 
 const scErrors = require('sc-errors');
@@ -414,7 +414,7 @@ function Client(options) {
   AsyncStreamEmitter.call(this);
 
   this.options = options;
-  this.isReady = false; // TODO 2: this._ready was renamed to this.isReady
+  this.isReady = false;
 
   let dataClients = [];
 
@@ -542,15 +542,6 @@ Client.prototype = Object.create(AsyncStreamEmitter.prototype);
 Client.prototype.destroy = function () {
   return this._privateClientCluster.removeAll();
 };
-
-// TODO 2: The user of this function should check if this.isReady as a separate step
-// Client.prototype.on = function (event, listener) {
-//   if (event === 'ready' && this.isReady) {
-//     listener();
-//   } else {
-//     EventEmitter.prototype.on.apply(this, arguments);
-//   }
-// };
 
 Client.prototype.exchange = function () {
   return this._exchangeClient;
