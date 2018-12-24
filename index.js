@@ -286,10 +286,6 @@ function Server(options) {
   let startDebugPort = options.debug;
   let startInspectPort = options.inspect;
 
-  let triggerBrokerStart = (brokerInfo) => {
-    this.emit('brokerStart', brokerInfo);
-  };
-
   let serverReadyPromises = [];
 
   for (let i = 0; i < len; i++) {
@@ -358,8 +354,7 @@ function Server(options) {
       })();
 
       let brokerInfo = await dataServer.listener('ready').once();
-
-      triggerBrokerStart({
+      this.emit('brokerStart', {
         id: brokerInfo.id,
         pid: brokerInfo.pid,
         respawn: !!isRespawn
