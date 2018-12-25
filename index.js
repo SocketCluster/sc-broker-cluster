@@ -304,7 +304,7 @@ function Server(options) {
       let socketPath = options.brokers[i];
 
       let dataServer = scBroker.createServer({
-        id: i,
+        brokerId: i,
         debug: startDebugPort ? startDebugPort + i : null,
         inspect: startInspectPort ? startInspectPort + i : null,
         instanceId: options.instanceId,
@@ -328,9 +328,9 @@ function Server(options) {
 
       (async () => {
         for await (let event of dataServer.listener('exit')) {
-          let exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + event.code;
+          let exitMessage = `Broker server at socket path ${socketPath} exited with code ${event.code}`;
           if (event.signal != null) {
-            exitMessage += ' and signal ' + event.signal;
+            exitMessage += ` and signal ${event.signal}`;
           }
           let error = new ProcessExitError(exitMessage, event.code);
           error.pid = process.pid;
@@ -338,7 +338,6 @@ function Server(options) {
             error.signal = event.signal;
           }
           this.emit('error', {error});
-
           this.emit('brokerExit', {
             brokerId: event.brokerId,
             pid: event.pid,
@@ -386,7 +385,7 @@ Server.prototype.sendRequestToBroker = function (brokerId, data) {
   if (targetBroker) {
     return targetBroker.sendRequestToBroker(data);
   }
-  let error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  let error = new BrokerError(`Broker with id ${brokerId} does not exist`);
   error.pid = process.pid;
   this.emit('error', {error});
   return Promise.reject(error);
@@ -397,7 +396,7 @@ Server.prototype.sendMessageToBroker = function (brokerId, data) {
   if (targetBroker) {
     return targetBroker.sendMessageToBroker(data);
   }
-  let error = new BrokerError('Broker with id ' + brokerId + ' does not exist');
+  let error = new BrokerError(`Broker with id ${brokerId} does not exist`);
   error.pid = process.pid;
   this.emit('error', {error});
   return Promise.reject(error);
