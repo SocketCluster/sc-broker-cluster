@@ -116,12 +116,12 @@ SCExchange.prototype._triggerChannelSubscribe = function (channel) {
   let channelName = channel.name;
 
   if (channel.state !== SCChannel.SUBSCRIBED) {
-    let oldAuthState = channel.state;
+    let oldChannelState = channel.state;
     channel.state = SCChannel.SUBSCRIBED;
 
     let stateChangeData = {
-      oldAuthState,
-      newAuthState: channel.state
+      oldChannelState,
+      newChannelState: channel.state
     };
 
     this._channelEventDemux.write(`${channelName}/subscribeStateChange`, stateChangeData);
@@ -144,8 +144,8 @@ SCExchange.prototype._triggerChannelUnsubscribe = function (channel) {
   delete this._channelMap[channelName];
   if (channel.state === SCChannel.SUBSCRIBED) {
     let stateChangeData = {
-      oldAuthState: channel.state,
-      newAuthState: SCChannel.UNSUBSCRIBED
+      oldChannelState: channel.state,
+      newChannelState: SCChannel.UNSUBSCRIBED
     };
     this._channelEventDemux.write(`${channelName}/subscribeStateChange`, stateChangeData);
     this._channelEventDemux.write(`${channelName}/unsubscribe`, {});
