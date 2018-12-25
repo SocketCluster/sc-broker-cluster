@@ -257,6 +257,10 @@ SCExchange.prototype.getChannelOptions = function (channelName) {
   return {};
 };
 
+SCExchange.prototype.closeChannel = function (channelName) {
+  this._channelDataDemux.close(channelName);
+};
+
 SCExchange.prototype.subscriptions = function (includePending) {
   let subs = [];
   Object.keys(this._channelMap).forEach((channelName) => {
