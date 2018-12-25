@@ -9,7 +9,6 @@ const scErrors = require('sc-errors');
 const BrokerError = scErrors.BrokerError;
 const ProcessExitError = scErrors.ProcessExitError;
 
-
 function AbstractDataClient(dataClient) {
   AsyncStreamEmitter.call(this);
   this._dataClient = dataClient;
@@ -84,7 +83,6 @@ AbstractDataClient.prototype.extractKeys = function (object) {
 AbstractDataClient.prototype.extractValues = function (object) {
   return this._dataClient.extractValues(object);
 };
-
 
 function SCExchange(privateClientCluster, publicClientCluster, ioClusterClient) {
   AbstractDataClient.call(this, publicClientCluster);
@@ -275,7 +273,6 @@ SCExchange.prototype.map = function () {
   return this._publicClientCluster.map.apply(this._publicClientCluster, arguments);
 };
 
-
 function Server(options) {
   AsyncStreamEmitter.call(this);
 
@@ -316,23 +313,23 @@ function Server(options) {
       })();
 
       (async () => {
-        for await (let {brokerInfo} of dataServer.listener('exit')) {
-          let exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + brokerInfo.code;
-          if (brokerInfo.signal != null) {
-            exitMessage += ' and signal ' + brokerInfo.signal;
+        for await (let event of dataServer.listener('exit')) {
+          let exitMessage = 'Broker server at socket path ' + socketPath + ' exited with code ' + event.code;
+          if (event.signal != null) {
+            exitMessage += ' and signal ' + event.signal;
           }
-          let error = new ProcessExitError(exitMessage, brokerInfo.code);
+          let error = new ProcessExitError(exitMessage, event.code);
           error.pid = process.pid;
-          if (brokerInfo.signal != null) {
-            error.signal = brokerInfo.signal;
+          if (event.signal != null) {
+            error.signal = event.signal;
           }
           this.emit('error', {error});
 
           this.emit('brokerExit', {
-            id: brokerInfo.id,
-            pid: brokerInfo.pid,
-            code: brokerInfo.code,
-            signal: brokerInfo.signal
+            brokerId: event.brokerId,
+            pid: event.pid,
+            code: event.code,
+            signal: event.signal
           });
 
           if (!this._shuttingDown) {
@@ -355,7 +352,7 @@ function Server(options) {
 
       let brokerInfo = await dataServer.listener('ready').once();
       this.emit('brokerStart', {
-        id: brokerInfo.id,
+        brokerId: brokerInfo.brokerId,
         pid: brokerInfo.pid,
         respawn: !!isRespawn
       });
@@ -403,7 +400,6 @@ Server.prototype.destroy = function () {
   this._shuttingDown = true;
   this.killBrokers();
 };
-
 
 function Client(options) {
   AsyncStreamEmitter.call(this);
