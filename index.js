@@ -277,7 +277,7 @@ function Server(options) {
   AsyncStreamEmitter.call(this);
 
   this._dataServers = [];
-  this._shuttingDown = false;
+  this.isShuttingDown = false;
 
   let len = options.brokers.length;
   let startDebugPort = options.debug;
@@ -331,8 +331,7 @@ function Server(options) {
             code: event.code,
             signal: event.signal
           });
-
-          if (!this._shuttingDown) {
+          if (!this.isShuttingDown) {
             launchServer(i, true);
           }
         }
@@ -397,7 +396,7 @@ Server.prototype.killBrokers = function () {
 };
 
 Server.prototype.destroy = function () {
-  this._shuttingDown = true;
+  this.isShuttingDown = true;
   this.killBrokers();
 };
 
