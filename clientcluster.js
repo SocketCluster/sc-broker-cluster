@@ -160,10 +160,10 @@ function ClientCluster(clients) {
     return self.detailedMap(key, method).targets;
   };
 
-  // TODO 2: test
   this.destroy = function () {
     clients.forEach((client) => {
       client.closeAllListeners();
+      client.end();
     });
   };
 }

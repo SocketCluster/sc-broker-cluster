@@ -549,7 +549,8 @@ function Client(options) {
 Client.prototype = Object.create(AsyncStreamEmitter.prototype);
 
 Client.prototype.destroy = function () {
-  return this._privateClientCluster.removeAll();
+  this._privateClientCluster.destroy();
+  this._publicClientCluster.destroy();
 };
 
 Client.prototype.exchange = function () {
