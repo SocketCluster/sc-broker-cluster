@@ -361,8 +361,12 @@ function Server(options) {
       })();
 
       (async () => {
-        for await (let event of dataServer.listener('brokerMessage')) {
-          this.emit('brokerMessage', event);
+        let brokerId = dataServer.options.brokerId;
+        for await (let {data} of dataServer.listener('brokerMessage')) {
+          this.emit('brokerMessage', {
+            brokerId,
+            data
+          });
         }
       })();
 
