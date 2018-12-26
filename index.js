@@ -428,9 +428,7 @@ function Client(options) {
   options.brokers.forEach((socketPath) => {
     let dataClient = scBroker.createClient({
       socketPath: socketPath,
-      secretKey: options.secretKey,
-      pubSubBatchDuration: options.pubSubBatchDuration,
-      connectRetryErrorThreshold: options.connectRetryErrorThreshold
+      ...options
     });
     dataClients.push(dataClient);
   });
