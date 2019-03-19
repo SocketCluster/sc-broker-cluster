@@ -1,6 +1,6 @@
 {
   "name": "sc-broker-cluster",
-  "version": "7.0.0",
+  "version": "9.0.0",
   "description": "Realtime clustering engine",
   "keywords": [
     "broker",
@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "async": "2.0.0",
-    "sc-broker": "^6.0.0",
+    "sc-broker": "^8.0.0",
     "sc-channel": "^1.2.0",
     "sc-errors": "^1.4.1",
     "sc-hasher": "^1.0.1"
